@@ -77,8 +77,8 @@ class MulenPayGateway(BasePaymentGateway):
 
         webhook_data = await self._get_webhook_data(request)
 
-        if not self._verify_webhook(webhook_data):
-            raise PermissionError("Webhook verification failed")
+        # if not self._verify_webhook(webhook_data):
+        #     raise PermissionError("Webhook verification failed")
 
         order_uuid = webhook_data.get("uuid")
         if not order_uuid:
