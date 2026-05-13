@@ -46,17 +46,21 @@ class LavaGateway(BasePaymentGateway):
 
         payload = {
             "offerId": settings.offer_id,
-            "email": "noreply@user.bot",
+            "email": "noreply@example.com",
             "currency": "RUB",
             "periodicity": "ONE_TIME",
             "buyerLanguage": "RU",
         }
 
         body = orjson.dumps(payload)
-        logger.debug(f"Creating Lava.top payment, offer_id={settings.offer_id}")
+        logger.debug(f"Creating Lava.top payment, offer_id={settings.offer_id}, payload={payload}")
 
         try:
             response = await self._client.post("/api/v2/invoice", content=body)
+            if response.status_code >= 400:
+                logger.error(
+                    f"Lava.top API error {response.status_code}: {response.text}"
+                )
             response.raise_for_status()
             data = orjson.loads(response.content)
 
