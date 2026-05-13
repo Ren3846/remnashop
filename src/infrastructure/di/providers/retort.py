@@ -33,6 +33,7 @@ from src.application.dto.payment_gateway import (
     CryptoPayGatewaySettingsDto,
     FreeKassaGatewaySettingsDto,
     HeleketGatewaySettingsDto,
+    LavaGatewaySettingsDto,
     MulenPayGatewaySettingsDto,
     PayMasterGatewaySettingsDto,
     PlategaGatewaySettingsDto,
@@ -102,6 +103,7 @@ class RetortProvider(Provider):
                 PaymentGatewayType.ROBOKASSA: RoboKassaGatewaySettingsDto,
                 PaymentGatewayType.URLPAY: UrlPayGatewaySettingsDto,
                 PaymentGatewayType.WATA: WataGatewaySettingsDto,
+                PaymentGatewayType.LAVA: LavaGatewaySettingsDto,
             }
 
             dto_class = type_mapping.get(pg_type)
@@ -151,6 +153,7 @@ class RetortProvider(Provider):
                         RoboKassaGatewaySettingsDto,
                         UrlPayGatewaySettingsDto,
                         WataGatewaySettingsDto,
+                        LavaGatewaySettingsDto,
                     ]
                 ],
             ]

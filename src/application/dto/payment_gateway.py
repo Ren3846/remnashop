@@ -149,6 +149,13 @@ class WataGatewaySettingsDto(GatewaySettingsDto):
     api_key: Optional[SecretStr] = None
 
 
+@dataclass(kw_only=True)
+class LavaGatewaySettingsDto(GatewaySettingsDto):
+    type: Literal[PaymentGatewayType.LAVA] = PaymentGatewayType.LAVA
+    shop_id: Optional[str] = None
+    secret_key: Optional[SecretStr] = None
+
+
 AnyGatewaySettingsDto = Union[
     YooKassaGatewaySettingsDto,
     YooMoneyGatewaySettingsDto,
@@ -162,4 +169,5 @@ AnyGatewaySettingsDto = Union[
     RoboKassaGatewaySettingsDto,
     UrlPayGatewaySettingsDto,
     WataGatewaySettingsDto,
+    LavaGatewaySettingsDto,
 ]
