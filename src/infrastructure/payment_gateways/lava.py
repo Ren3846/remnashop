@@ -48,7 +48,7 @@ class LavaGateway(BasePaymentGateway):
             "offerId": settings.offer_id,
             "email": "noreply@example.com",
             "currency": "RUB",
-            "periodicity": "ONE_TIME",
+            "periodicity": "MONTHLY",
             "buyerLanguage": "RU",
         }
 
