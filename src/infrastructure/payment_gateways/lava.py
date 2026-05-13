@@ -1,8 +1,7 @@
 import hashlib
 import hmac
-import uuid
 from decimal import Decimal
-from typing import Any, Final
+from typing import Final
 from uuid import UUID
 
 import orjson
@@ -19,12 +18,11 @@ from src.core.enums import TransactionStatus
 from .base import BasePaymentGateway
 
 
-# https://dev.lava.ru/
+# https://gate.lava.top/docs
 class LavaGateway(BasePaymentGateway):
     _client: AsyncClient
 
-    API_BASE: Final[str] = "https://api.lava.ru/business"
-    INVOICE_EXPIRE_MINUTES: Final[int] = 30
+    API_BASE: Final[str] = "https://gate.lava.top"
 
     def __init__(self, gateway: PaymentGatewayDto, bot: Bot, config: AppConfig) -> None:
         super().__init__(gateway, bot, config)
@@ -35,47 +33,53 @@ class LavaGateway(BasePaymentGateway):
                 f"got {type(self.data.settings).__name__}"
             )
 
-        self._client = self._make_client(base_url=self.API_BASE)
+        settings: LavaGatewaySettingsDto = self.data.settings
+        api_key = settings.api_key.get_secret_value()  # type: ignore[union-attr]
+
+        self._client = self._make_client(
+            base_url=self.API_BASE,
+            headers={"X-Api-Key": api_key, "Content-Type": "application/json"},
+        )
 
     async def handle_create_payment(self, amount: Decimal, details: str) -> PaymentResultDto:
-        order_id = uuid.uuid4()
-        payload = await self._create_payment_payload(str(order_id), str(amount), details)
+        settings: LavaGatewaySettingsDto = self.data.settings  # type: ignore[assignment]
+
+        payload = {
+            "offerId": settings.offer_id,
+            "email": "noreply@user.bot",
+            "currency": "RUB",
+            "periodicity": "ONE_TIME",
+            "buyerLanguage": "RU",
+        }
+
         body = orjson.dumps(payload)
-        signature = self._sign(body)
-        logger.debug(f"Creating Lava payment, order_id={order_id}")
+        logger.debug(f"Creating Lava.top payment, offer_id={settings.offer_id}")
 
         try:
-            response = await self._client.post(
-                "/invoice/create",
-                content=body,
-                headers={
-                    "Content-Type": "application/json",
-                    "Signature": signature,
-                },
-            )
+            response = await self._client.post("/api/v2/invoice", content=body)
             response.raise_for_status()
             data = orjson.loads(response.content)
 
-            if data.get("status") != 200:
-                raise ValueError(f"Lava API error: {data}")
+            payment_id = UUID(data["id"])
+            payment_url = data["paymentUrl"]
 
-            return self._get_payment_data(order_id, data.get("data", {}))
+            return PaymentResultDto(id=payment_id, url=payment_url)
 
         except HTTPStatusError as e:
             logger.error(
-                f"HTTP error creating Lava payment. "
+                f"HTTP error creating Lava.top payment. "
                 f"Status: '{e.response.status_code}', Body: {e.response.text}"
             )
             raise
         except (KeyError, orjson.JSONDecodeError) as e:
-            logger.error(f"Failed to parse Lava response. Error: {e}")
+            logger.error(f"Failed to parse Lava.top response. Error: {e}")
             raise
         except Exception as e:
-            logger.exception(f"Unexpected error creating Lava payment: {e}")
+            logger.exception(f"Unexpected error creating Lava.top payment: {e}")
             raise
 
     async def handle_webhook(self, request: Request) -> tuple[UUID, TransactionStatus]:
-        logger.debug("Received Lava webhook request")
+        logger.debug("Received Lava.top webhook request")
 
         body = await request.body()
 
@@ -83,64 +87,37 @@ class LavaGateway(BasePaymentGateway):
             raise PermissionError("Webhook verification failed")
 
         webhook_data = orjson.loads(body)
-        order_id_str = webhook_data.get("order_id")
+        contract_id = webhook_data.get("contractId")
 
-        if not order_id_str:
-            raise ValueError("Required field 'order_id' is missing in Lava webhook")
+        if not contract_id:
+            raise ValueError("Required field 'contractId' is missing in Lava.top webhook")
 
-        status = webhook_data.get("status")
-        payment_id = UUID(order_id_str)
+        event_type = webhook_data.get("eventType", "")
+        payment_id = UUID(contract_id)
 
-        match status:
-            case "success":
+        match event_type:
+            case "payment.success" | "subscription.recurring.payment.success":
                 transaction_status = TransactionStatus.COMPLETED
-            case "error" | "canceled":
+            case "payment.failed" | "subscription.recurring.payment.failed" | "subscription.cancelled":
                 transaction_status = TransactionStatus.CANCELED
             case _:
-                raise ValueError(f"Unsupported Lava webhook status: '{status}'")
+                raise ValueError(f"Unsupported Lava.top event type: '{event_type}'")
 
         return payment_id, transaction_status
 
-    async def _create_payment_payload(
-        self, order_id: str, amount: str, details: str
-    ) -> dict[str, Any]:
-        bot_url = await self._get_bot_redirect_url()
-        webhook_url = self._get_webhook_url()
-        return {
-            "orderId": order_id,
-            "sum": float(amount),
-            "shopId": self.data.settings.shop_id,  # type: ignore[union-attr]
-            "hookUrl": webhook_url,
-            "successUrl": bot_url,
-            "failUrl": bot_url,
-            "expire": self.INVOICE_EXPIRE_MINUTES,
-            "comment": details,
-        }
-
-    def _get_payment_data(self, order_id: UUID, data: dict[str, Any]) -> PaymentResultDto:
-        payment_url = data.get("url")
-        if not payment_url:
-            raise KeyError("Invalid response from Lava API: missing 'url'")
-        return PaymentResultDto(id=order_id, url=str(payment_url))
-
-    def _sign(self, body: bytes) -> str:
-        secret = self.data.settings.secret_key.get_secret_value()  # type: ignore[union-attr]
-        return hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-
     def _verify_webhook(self, request: Request, raw_body: bytes) -> bool:
-        signature = request.headers.get("X-Signature")
+        settings: LavaGatewaySettingsDto = self.data.settings  # type: ignore[assignment]
+        signature = request.headers.get("signature")
+
         if not signature:
-            logger.warning("Lava webhook missing 'X-Signature' header")
+            logger.warning("Lava.top webhook missing 'signature' header")
             return False
 
-        expected = self._sign(raw_body)
+        secret = settings.webhook_secret.get_secret_value()  # type: ignore[union-attr]
+        expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+
         if not hmac.compare_digest(expected, signature):
-            logger.warning("Invalid Lava webhook signature")
+            logger.warning("Invalid Lava.top webhook signature")
             return False
 
         return True
-
-    def _get_webhook_url(self) -> str:
-        from src.core.enums import PaymentGatewayType
-
-        return self.config.get_webhook(PaymentGatewayType.LAVA)

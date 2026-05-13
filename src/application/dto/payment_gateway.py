@@ -152,8 +152,9 @@ class WataGatewaySettingsDto(GatewaySettingsDto):
 @dataclass(kw_only=True)
 class LavaGatewaySettingsDto(GatewaySettingsDto):
     type: Literal[PaymentGatewayType.LAVA] = PaymentGatewayType.LAVA
-    shop_id: Optional[str] = None
-    secret_key: Optional[SecretStr] = None
+    api_key: Optional[SecretStr] = None
+    offer_id: Optional[str] = None
+    webhook_secret: Optional[SecretStr] = None
 
 
 AnyGatewaySettingsDto = Union[
