@@ -4,6 +4,7 @@ from pydantic import SecretStr, field_validator
 from pydantic_core.core_schema import FieldValidationInfo
 
 from src.core.constants import API_V1, BOT_WEBHOOK_PATH, URL_PATTERN
+from src.core.types import IntList
 
 from .base import BaseConfig
 from .validators import validate_not_change_me, validate_username
@@ -12,7 +13,7 @@ from .validators import validate_not_change_me, validate_username
 class BotConfig(BaseConfig, env_prefix="BOT_"):
     token: SecretStr
     secret_token: SecretStr
-    owner_id: int
+    owner_id: IntList
     support_username: SecretStr
     mini_app: Union[bool, SecretStr] = False
     proxy_url: Optional[SecretStr] = None

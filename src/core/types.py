@@ -34,6 +34,13 @@ RemnaUserDto: TypeAlias = Union[UserWebhookDto, UserResponseDto]
 StringList: TypeAlias = Annotated[
     ListStr, PlainValidator(lambda x: [s.strip() for s in x.split(",")])
 ]
+
+IntList: TypeAlias = Annotated[
+    list[int],
+    PlainValidator(
+        func=lambda x: [int(i.strip()) for i in x.split(",")] if isinstance(x, str) else x
+    ),
+]
 LocaleList: TypeAlias = Annotated[
     ListLocale,
     PlainValidator(

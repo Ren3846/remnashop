@@ -163,7 +163,7 @@ class NotificationService(Notifier):
         users = await self.user_dao.filter_by_role(task.roles)
 
         if not users:
-            temp_owner = [TempUserDto.as_temp_owner(telegram_id=self.config.bot.owner_id)]
+            temp_owner = [TempUserDto.as_temp_owner(telegram_id=self.config.bot.owner_id[0])]
 
         await self._broadcast(users or temp_owner, task.payload)
 

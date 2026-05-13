@@ -71,7 +71,7 @@ class GetOrCreateUser(Interactor[GetOrCreateUserDto, Optional[UserDto]]):
                 )
                 return None
 
-            is_owner = data.telegram_id == self.config.bot.owner_id
+            is_owner = data.telegram_id in self.config.bot.owner_id
 
             if is_owner:
                 data.role = Role.OWNER
