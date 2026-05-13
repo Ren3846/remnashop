@@ -15,9 +15,11 @@ from src.core.enums import Locale, SystemNotificationType, UserNotificationType
 if TYPE_CHECKING:
     ListStr: TypeAlias = list[str]
     ListLocale: TypeAlias = list[Locale]
+    ListInt: TypeAlias = list[int]
 else:
     ListStr = NewType("ListStr", list[str])
     ListLocale = NewType("ListLocale", list[Locale])
+    ListInt = NewType("ListInt", list[int])
 
 AnyKeyboard: TypeAlias = Union[
     InlineKeyboardMarkup,
@@ -36,7 +38,7 @@ StringList: TypeAlias = Annotated[
 ]
 
 IntList: TypeAlias = Annotated[
-    list[int],
+    ListInt,
     PlainValidator(
         func=lambda x: [int(i.strip()) for i in x.split(",")] if isinstance(x, str) else x
     ),
