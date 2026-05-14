@@ -22,6 +22,7 @@ class BotConfig(BaseConfig, env_prefix="BOT_"):
     drop_pending_updates: bool = False
     setup_commands: bool = True
     use_banners: bool = True
+    happ_connect: bool = True
 
     @property
     def webhook_path(self) -> str:

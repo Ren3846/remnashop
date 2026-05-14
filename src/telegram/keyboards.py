@@ -56,14 +56,14 @@ connect_buttons = (
         text=I18nFormat("btn-menu.connect"),
         url=Format("{connection_url}"),
         id="connect_miniapp",
-        when=F["is_mini_app"] & F["connectable"],
+        when=F["is_mini_app"] & F["connectable"] & ~F["happ_connect"],
         style=Style(ButtonStyle.PRIMARY),
     ),
     Url(
         text=I18nFormat("btn-menu.connect"),
         url=Format("{connection_url}"),
         id="connect_sub_page",
-        when=~F["is_mini_app"] & F["connectable"],
+        when=~F["is_mini_app"] & F["connectable"] & ~F["happ_connect"],
         style=Style(ButtonStyle.PRIMARY),
     ),
 )

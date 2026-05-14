@@ -291,6 +291,7 @@ async def getter_connect(
 
     return {
         "is_mini_app": config.bot.is_mini_app,
+        "happ_connect": config.bot.happ_connect,
         "connection_url": config.bot.mini_app_url or current_subscription.url,
         "happ_link": create_happ_crypto_link(current_subscription.url),
         "connectable": True,
@@ -320,6 +321,7 @@ async def success_payment_getter(
         "expire_time": i18n_format_expire_time(subscription.expire_at),
         "added_duration": i18n_format_days(subscription.plan_snapshot.duration),
         "is_mini_app": config.bot.is_mini_app,
+        "happ_connect": config.bot.happ_connect,
         "connection_url": config.bot.mini_app_url or subscription.url,
         "happ_link": create_happ_crypto_link(subscription.url),
         "connectable": True,

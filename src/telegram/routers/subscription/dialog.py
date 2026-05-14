@@ -1,6 +1,6 @@
 from aiogram.enums import ButtonStyle
-from aiogram_dialog import Dialog, Window
-from aiogram_dialog.widgets.kbd import Button, Column, Group, Row, Select, SwitchTo, Url
+from aiogram_dialog import Dialog, StartMode, Window
+from aiogram_dialog.widgets.kbd import Button, Column, Group, Row, Select, Start, SwitchTo, Url
 from aiogram_dialog.widgets.style import Style
 from aiogram_dialog.widgets.text import Format
 from magic_filter import F
@@ -8,7 +8,7 @@ from magic_filter import F
 from src.core.constants import PAYMENT_PREFIX
 from src.core.enums import BannerName, PaymentGatewayType, PurchaseType
 from src.telegram.keyboards import back_main_menu_button, connect_buttons
-from src.telegram.states import Subscription
+from src.telegram.states import MainMenu, Subscription
 from src.telegram.widgets import Banner, I18nFormat, IgnoreUpdate
 
 from .getters import (
@@ -238,7 +238,16 @@ confirm = Window(
 success_payment = Window(
     Banner(BannerName.SUBSCRIPTION),
     I18nFormat("msg-subscription-success"),
-    Format("🔗 <code>{happ_link}</code>", when=F["happ_link"]),
+    Row(
+        Start(
+            text=I18nFormat("btn-menu.connect-guide"),
+            id="connect_guide_success",
+            state=MainMenu.CONNECT_GUIDE,
+            mode=StartMode.RESET_STACK,
+            style=Style(ButtonStyle.PRIMARY),
+            when=F["happ_connect"],
+        ),
+    ),
     Row(
         *connect_buttons,
     ),
@@ -251,7 +260,16 @@ success_payment = Window(
 success_trial = Window(
     Banner(BannerName.SUBSCRIPTION),
     I18nFormat("msg-subscription-trial"),
-    Format("🔗 <code>{happ_link}</code>", when=F["happ_link"]),
+    Row(
+        Start(
+            text=I18nFormat("btn-menu.connect-guide"),
+            id="connect_guide_trial",
+            state=MainMenu.CONNECT_GUIDE,
+            mode=StartMode.RESET_STACK,
+            style=Style(ButtonStyle.PRIMARY),
+            when=F["happ_connect"],
+        ),
+    ),
     Row(
         *connect_buttons,
     ),

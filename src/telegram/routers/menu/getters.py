@@ -51,6 +51,7 @@ async def menu_getter(
             "show_purchase_discount": show_purchase_discount,
             # ui / config
             "is_mini_app": config.bot.is_mini_app,
+            "happ_connect": config.bot.happ_connect,
             "support_url": support_url,
             # referral
             "referral_enabled": menu_data.is_referral_enabled,

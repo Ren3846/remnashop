@@ -56,14 +56,15 @@ menu = Window(
             on_click=show_reason,
             when=~F["connectable"],
         ),
-        when=F["has_subscription"],
+        when=F["has_subscription"] & ~F["happ_connect"],
     ),
     Row(
         SwitchTo(
             text=I18nFormat("btn-menu.connect-guide"),
             id="connect_guide",
             state=MainMenu.CONNECT_GUIDE,
-            when=F["happ_link"],
+            when=F["happ_connect"] & F["has_subscription"],
+            style=Style(ButtonStyle.PRIMARY),
         ),
     ),
     Row(
