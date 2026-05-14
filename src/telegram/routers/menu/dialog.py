@@ -39,6 +39,7 @@ from .handlers import (
     on_get_trial,
     on_invite,
     on_reissue_subscription_confirm,
+    on_send_happ_link,
     on_show_qr,
     on_withdraw_points,
     show_reason,
@@ -314,12 +315,20 @@ device_confirm_reissue = Window(
     getter=device_confirm_delete_getter,
 )
 
-HAPP_ANDROID_URL = "https://play.google.com/store/apps/details?id=com.happproxy&hl=en-US&pli=1"
-HAPP_IOS_URL = "https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973?l=en-GB"
+HAPP_ANDROID_URL = "https://play.google.com/store/apps/details?id=com.happproxy"
+HAPP_IOS_URL = "https://apps.apple.com/ua/app/happ-proxy-utility/id6504287215"
 
 connect_guide = Window(
     Banner(BannerName.MENU),
     I18nFormat("msg-menu-connect-guide"),
+    Row(
+        Button(
+            text=I18nFormat("btn-connect-guide.get-link"),
+            id="send_happ_link",
+            on_click=on_send_happ_link,
+            when=F["happ_link"],
+        ),
+    ),
     Row(
         Url(
             text=I18nFormat("btn-connect-guide.android"),

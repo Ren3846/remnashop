@@ -7,6 +7,8 @@ from dishka import FromDishka
 from dishka.integrations.aiogram_dialog import inject
 from loguru import logger
 
+from remnapy.utils.happ_crypt import create_happ_crypto_link
+
 from src.application.common import Notifier, TranslatorRunner
 from src.application.common.dao import SettingsDao, SubscriptionDao
 from src.application.dto import MediaDescriptorDto, MessagePayloadDto, PlanSnapshotDto, UserDto
@@ -237,3 +239,29 @@ async def on_invite(
     if settings.referral.enable:
         await dialog_manager.switch_to(state=MainMenu.INVITE)
     return
+
+
+@inject
+async def on_send_happ_link(
+    callback: CallbackQuery,
+    widget: Button,
+    dialog_manager: DialogManager,
+    subscription_dao: FromDishka[SubscriptionDao],
+) -> None:
+    user: UserDto = dialog_manager.middleware_data[USER_KEY]
+    subscription = await subscription_dao.get_current(user.telegram_id)
+
+    if not subscription or not subscription.url:
+        await callback.answer("Подписка не найдена", show_alert=True)
+        return
+
+    happ_link = create_happ_crypto_link(subscription.url)
+    if not happ_link:
+        await callback.answer("Не удалось сгенерировать ссылку", show_alert=True)
+        return
+
+    await callback.message.answer(
+        f"🔗 Ваша ссылка для подключения:\n\n<code>{happ_link}</code>",
+        parse_mode="HTML",
+    )
+    await callback.answer()

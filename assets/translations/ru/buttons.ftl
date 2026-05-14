@@ -27,6 +27,7 @@ btn-devices =
     .cancel-reissue = ❌ Нет
 
 btn-connect-guide =
+    .get-link = 📋 Получить ссылку подписки
     .android = 🤖 Android (Google Play)
     .ios = 🍎 iOS (App Store)
 
