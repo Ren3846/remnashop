@@ -261,7 +261,11 @@ async def on_send_happ_link(
         return
 
     await callback.message.answer(
-        f"🔗 Ваша ссылка для подключения:\n\n<code>{happ_link}</code>",
+        "🔗 Ваша ссылка для подключения:",
+        parse_mode="HTML",
+    )
+    await callback.message.answer(
+        f"<code>{happ_link}</code>",
         parse_mode="HTML",
     )
     await callback.answer()
