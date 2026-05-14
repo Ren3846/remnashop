@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Self
+from typing import Optional, Self
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_core.core_schema import FieldValidationInfo
@@ -14,6 +14,7 @@ from .bot import BotConfig
 from .build import BuildConfig
 from .database import DatabaseConfig
 from .log import LogConfig
+from .mailgun import MailgunConfig
 from .redis import RedisConfig
 from .remnawave import RemnawaveConfig
 from .validators import validate_not_change_me
@@ -37,6 +38,8 @@ class AppConfig(BaseConfig, env_prefix="APP_"):
     redis: RedisConfig = Field(default_factory=RedisConfig)
     build: BuildConfig = Field(default_factory=BuildConfig)
     log: LogConfig = Field(default_factory=LogConfig)
+    mailgun: Optional[MailgunConfig] = None
+    landing_secret: Optional[SecretStr] = None
 
     @property
     def banners_dir(self) -> Path:
