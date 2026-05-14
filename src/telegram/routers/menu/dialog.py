@@ -57,6 +57,7 @@ menu = Window(
         ),
         when=F["has_subscription"],
     ),
+    Format("🔗 <code>{happ_link}</code>", when=F["happ_link"]),
     Row(
         Button(
             text=I18nFormat("btn-menu.trial"),
