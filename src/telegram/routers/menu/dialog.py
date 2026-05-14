@@ -323,12 +323,12 @@ connect_guide = Window(
     Row(
         Url(
             text=I18nFormat("btn-connect-guide.android"),
-            url=HAPP_ANDROID_URL,
+            url=Format(HAPP_ANDROID_URL),
             id="happ_android",
         ),
         Url(
             text=I18nFormat("btn-connect-guide.ios"),
-            url=HAPP_IOS_URL,
+            url=Format(HAPP_IOS_URL),
             id="happ_ios",
         ),
     ),
