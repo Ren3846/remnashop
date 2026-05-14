@@ -69,9 +69,10 @@ connect_buttons = (
 )
 
 happ_copy_button = (
-    CopyText(
+    Url(
         text=I18nFormat("btn-subscription.happ-copy"),
-        copy_text=Format("{happ_link}"),
+        url=Format("{happ_link}"),
+        id="connect_happ",
         when=F["happ_link"] & F["connectable"],
     ),
 )
