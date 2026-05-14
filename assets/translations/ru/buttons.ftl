@@ -26,6 +26,10 @@ btn-devices =
     .confirm-reissue = ✅ Да, сбросить
     .cancel-reissue = ❌ Нет
 
+btn-connect-guide =
+    .android = 🤖 Android (Google Play)
+    .ios = 🍎 iOS (App Store)
+
 btn-remnashop-info =
     .release-latest = 👀 Посмотреть
     .how-upgrade = ❓ Как обновить
@@ -42,6 +46,7 @@ btn-requirement =
 btn-menu =
     .trial = 🎁 ПОПРОБОВАТЬ БЕСПЛАТНО
     .connect = 🚀 Подключиться
+    .connect-guide = 📖 Как подключиться
     .devices = 📱 Устройства
     .subscription = 💳 Подписка
     .invite = 👥 Пригласить

@@ -57,7 +57,14 @@ menu = Window(
         ),
         when=F["has_subscription"],
     ),
-    Format("🔗 <code>{happ_link}</code>", when=F["happ_link"]),
+    Row(
+        SwitchTo(
+            text=I18nFormat("btn-menu.connect-guide"),
+            id="connect_guide",
+            state=MainMenu.CONNECT_GUIDE,
+            when=F["happ_link"],
+        ),
+    ),
     Row(
         Button(
             text=I18nFormat("btn-menu.trial"),
@@ -307,6 +314,36 @@ device_confirm_reissue = Window(
     getter=device_confirm_delete_getter,
 )
 
+HAPP_ANDROID_URL = "https://play.google.com/store/apps/details?id=com.happproxy&hl=en-US&pli=1"
+HAPP_IOS_URL = "https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973?l=en-GB"
+
+connect_guide = Window(
+    Banner(BannerName.MENU),
+    I18nFormat("msg-menu-connect-guide"),
+    Row(
+        Url(
+            text=I18nFormat("btn-connect-guide.android"),
+            url=HAPP_ANDROID_URL,
+            id="happ_android",
+        ),
+        Url(
+            text=I18nFormat("btn-connect-guide.ios"),
+            url=HAPP_IOS_URL,
+            id="happ_ios",
+        ),
+    ),
+    Row(
+        SwitchTo(
+            text=I18nFormat("btn-back.general"),
+            id="back",
+            state=MainMenu.MAIN,
+        ),
+    ),
+    IgnoreUpdate(),
+    state=MainMenu.CONNECT_GUIDE,
+    getter=menu_getter,
+)
+
 router = Dialog(
     menu,
     devices,
@@ -315,4 +352,5 @@ router = Dialog(
     device_confirm_reissue,
     invite,
     invite_about,
+    connect_guide,
 )

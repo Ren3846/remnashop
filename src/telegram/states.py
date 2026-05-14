@@ -11,6 +11,7 @@ class MainMenu(StatesGroup):
     DEVICE_CONFIRM_REISSUE = State()
     INVITE = State()
     INVITE_ABOUT = State()
+    CONNECT_GUIDE = State()
 
 
 class Notification(StatesGroup):
