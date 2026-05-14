@@ -18,7 +18,7 @@ from magic_filter import F
 from src.application.common.policy import Permission
 from src.core.constants import INLINE_QUERY_INVITE, PAYMENT_PREFIX
 from src.core.enums import BannerName
-from src.telegram.keyboards import connect_buttons, custom_buttons
+from src.telegram.keyboards import connect_buttons, custom_buttons, happ_copy_button
 from src.telegram.routers.dashboard.users.handlers import on_user_search
 from src.telegram.states import Dashboard, MainMenu, Subscription
 from src.telegram.utils import require_permission
@@ -55,6 +55,10 @@ menu = Window(
             on_click=show_reason,
             when=~F["connectable"],
         ),
+        when=F["has_subscription"],
+    ),
+    Row(
+        *happ_copy_button,
         when=F["has_subscription"],
     ),
     Row(

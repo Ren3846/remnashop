@@ -61,7 +61,13 @@ class GetOrCreateUser(Interactor[GetOrCreateUserDto, Optional[UserDto]]):
     async def _execute(self, actor: UserDto, data: GetOrCreateUserDto) -> Optional[UserDto]:
         async with self.uow:
             user = await self.user_dao.get_by_telegram_id(data.telegram_id)
+            is_owner = data.telegram_id in self.config.bot.owner_id
+
             if user:
+                if is_owner and not user.role.includes(Role.OWNER):
+                    user.role = Role.OWNER
+                    await self.user_dao.update(user)
+                    await self.uow.commit()
                 return user
 
             if data.event.__class__.__name__ == ChatMemberUpdated.__name__:
@@ -71,14 +77,8 @@ class GetOrCreateUser(Interactor[GetOrCreateUserDto, Optional[UserDto]]):
                 )
                 return None
 
-            is_owner = data.telegram_id in self.config.bot.owner_id
-
             if is_owner:
                 data.role = Role.OWNER
-                old_owner = await self.user_dao.filter_by_role([Role.OWNER])
-                if old_owner:
-                    old_owner[0].role = Role.DEV
-                    await self.user_dao.update(old_owner[0])
 
             user_dto = self._create_user_dto(data)
             user = await self.user_dao.create(user_dto)

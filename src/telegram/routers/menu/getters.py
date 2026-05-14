@@ -5,6 +5,8 @@ from dishka import FromDishka
 from dishka.integrations.aiogram_dialog import inject
 from loguru import logger
 
+from remnapy.utils.happ_crypt import create_happ_crypto_link
+
 from src.application.common import Remnawave, TranslatorRunner
 from src.application.common.dao import ReferralDao, SettingsDao, SubscriptionDao
 from src.application.dto import UserDto
@@ -66,6 +68,7 @@ async def menu_getter(
             "expire_time": None,
             "reset_time": None,
             "connection_url": None,
+            "happ_link": "",
             "row_1_buttons": [b for b in menu_data.custom_buttons if b.index in (1, 2)],
             "row_2_buttons": [b for b in menu_data.custom_buttons if b.index in (3, 4)],
             "row_3_buttons": [b for b in menu_data.custom_buttons if b.index in (5, 6)],
@@ -103,6 +106,7 @@ async def menu_getter(
                 "connection_url": config.bot.mini_app_url
                 if isinstance(config.bot.mini_app_url, str)
                 else subscription.url,
+                "happ_link": create_happ_crypto_link(subscription.url),
             }
         )
         logger.debug(f"Menu data for user {user.telegram_id}: {data}")

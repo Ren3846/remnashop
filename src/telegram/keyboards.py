@@ -68,6 +68,14 @@ connect_buttons = (
     ),
 )
 
+happ_copy_button = (
+    CopyText(
+        text=I18nFormat("btn-subscription.happ-copy"),
+        copy_text=Format("{happ_link}"),
+        when=F["happ_link"] & F["connectable"],
+    ),
+)
+
 main_menu_button = (
     Start(
         text=I18nFormat("btn-back.menu"),
