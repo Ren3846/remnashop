@@ -464,7 +464,6 @@ btn-subscription =
     .back-duration = ⬅️ Изменить длительность
     .back-payment-method = ⬅️ Изменить способ оплаты
     .connect = 🚀 Подключиться
-    .happ-copy = 📋 Скопировать Happ ссылку
 
     .duration = { $period } | { $final_amount ->
     [0] 🎁

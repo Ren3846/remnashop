@@ -7,7 +7,7 @@ from magic_filter import F
 
 from src.core.constants import PAYMENT_PREFIX
 from src.core.enums import BannerName, PaymentGatewayType, PurchaseType
-from src.telegram.keyboards import back_main_menu_button, connect_buttons, happ_copy_button
+from src.telegram.keyboards import back_main_menu_button, connect_buttons
 from src.telegram.states import Subscription
 from src.telegram.widgets import Banner, I18nFormat, IgnoreUpdate
 
@@ -238,11 +238,9 @@ confirm = Window(
 success_payment = Window(
     Banner(BannerName.SUBSCRIPTION),
     I18nFormat("msg-subscription-success"),
+    Format("🔗 <code>{happ_link}</code>", when=F["happ_link"]),
     Row(
         *connect_buttons,
-    ),
-    Row(
-        *happ_copy_button,
     ),
     *back_main_menu_button,
     IgnoreUpdate(),
@@ -253,11 +251,9 @@ success_payment = Window(
 success_trial = Window(
     Banner(BannerName.SUBSCRIPTION),
     I18nFormat("msg-subscription-trial"),
+    Format("🔗 <code>{happ_link}</code>", when=F["happ_link"]),
     Row(
         *connect_buttons,
-    ),
-    Row(
-        *happ_copy_button,
     ),
     *back_main_menu_button,
     IgnoreUpdate(),
