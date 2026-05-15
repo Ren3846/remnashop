@@ -1,6 +1,6 @@
 from aiogram import F, Router
 from aiogram.filters import CommandStart
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto, Message
 from aiogram_dialog import DialogManager, ShowMode, StartMode
 from aiogram_dialog.widgets.kbd import Button
 from dishka import FromDishka
@@ -11,6 +11,7 @@ from remnapy.utils.happ_crypt import create_happ_crypto_link
 
 from src.application.common import Notifier, TranslatorRunner
 from src.application.common.dao import SettingsDao, SubscriptionDao
+from src.core.constants import ASSETS_DIR
 from src.application.dto import MediaDescriptorDto, MessagePayloadDto, PlanSnapshotDto, UserDto
 from src.application.services import BotService
 from src.application.use_cases.referral.queries.code import GenerateReferralQr
@@ -239,6 +240,25 @@ async def on_invite(
     if settings.referral.enable:
         await dialog_manager.switch_to(state=MainMenu.INVITE)
     return
+
+
+async def _send_instr_images(callback: CallbackQuery) -> None:
+    files = [ASSETS_DIR / f"instr{i}.jpg" for i in range(1, 4)]
+    existing = [f for f in files if f.exists()]
+    if not existing:
+        return
+    media = [InputMediaPhoto(media=FSInputFile(str(f))) for f in existing]
+    await callback.message.answer_media_group(media=media)
+
+
+@inject
+async def on_open_connect_guide(
+    callback: CallbackQuery,
+    widget: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    await _send_instr_images(callback)
+    await dialog_manager.switch_to(MainMenu.CONNECT_GUIDE)
 
 
 @inject

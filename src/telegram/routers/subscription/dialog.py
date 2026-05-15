@@ -1,6 +1,6 @@
 from aiogram.enums import ButtonStyle
-from aiogram_dialog import Dialog, StartMode, Window
-from aiogram_dialog.widgets.kbd import Button, Column, Group, Row, Select, Start, SwitchTo, Url
+from aiogram_dialog import Dialog, Window
+from aiogram_dialog.widgets.kbd import Button, Column, Group, Row, Select, SwitchTo, Url
 from aiogram_dialog.widgets.style import Style
 from aiogram_dialog.widgets.text import Format
 from magic_filter import F
@@ -8,7 +8,7 @@ from magic_filter import F
 from src.core.constants import PAYMENT_PREFIX
 from src.core.enums import BannerName, PaymentGatewayType, PurchaseType
 from src.telegram.keyboards import back_main_menu_button, connect_buttons
-from src.telegram.states import MainMenu, Subscription
+from src.telegram.states import Subscription
 from src.telegram.widgets import Banner, I18nFormat, IgnoreUpdate
 
 from .getters import (
@@ -24,6 +24,7 @@ from .getters import (
 from .handlers import (
     on_duration_select,
     on_get_subscription,
+    on_open_connect_guide_start,
     on_payment_method_select,
     on_plan_select,
     on_subscription_plans,
@@ -239,11 +240,10 @@ success_payment = Window(
     Banner(BannerName.SUBSCRIPTION),
     I18nFormat("msg-subscription-success"),
     Row(
-        Start(
+        Button(
             text=I18nFormat("btn-menu.connect-guide"),
             id="connect_guide_success",
-            state=MainMenu.CONNECT_GUIDE,
-            mode=StartMode.RESET_STACK,
+            on_click=on_open_connect_guide_start,
             style=Style(ButtonStyle.PRIMARY),
             when=F["happ_connect"],
         ),
@@ -261,11 +261,10 @@ success_trial = Window(
     Banner(BannerName.SUBSCRIPTION),
     I18nFormat("msg-subscription-trial"),
     Row(
-        Start(
+        Button(
             text=I18nFormat("btn-menu.connect-guide"),
             id="connect_guide_trial",
-            state=MainMenu.CONNECT_GUIDE,
-            mode=StartMode.RESET_STACK,
+            on_click=on_open_connect_guide_start,
             style=Style(ButtonStyle.PRIMARY),
             when=F["happ_connect"],
         ),

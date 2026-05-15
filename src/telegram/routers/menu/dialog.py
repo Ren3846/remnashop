@@ -38,6 +38,7 @@ from .handlers import (
     on_device_delete_request,
     on_get_trial,
     on_invite,
+    on_open_connect_guide,
     on_reissue_subscription_confirm,
     on_send_happ_link,
     on_show_qr,
@@ -59,10 +60,10 @@ menu = Window(
         when=F["has_subscription"] & ~F["happ_connect"],
     ),
     Row(
-        SwitchTo(
+        Button(
             text=I18nFormat("btn-menu.connect-guide"),
             id="connect_guide",
-            state=MainMenu.CONNECT_GUIDE,
+            on_click=on_open_connect_guide,
             when=F["happ_connect"] & F["has_subscription"],
             style=Style(ButtonStyle.PRIMARY),
         ),

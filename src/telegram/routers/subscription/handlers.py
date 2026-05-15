@@ -1,8 +1,8 @@
 from typing import Optional, TypedDict, cast
 
 from adaptix import Retort
-from aiogram.types import CallbackQuery
-from aiogram_dialog import DialogManager
+from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto
+from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.kbd import Button, Select
 from dishka import FromDishka
 from dishka.integrations.aiogram_dialog import inject
@@ -20,9 +20,9 @@ from src.application.use_cases.gateways.commands.payment import (
 )
 from src.application.use_cases.plan.queries.match import MatchPlan, MatchPlanDto
 from src.application.use_cases.user.queries.plans import GetAvailablePlans
-from src.core.constants import PAYMENT_PREFIX, USER_KEY
+from src.core.constants import ASSETS_DIR, PAYMENT_PREFIX, USER_KEY
 from src.core.enums import PaymentGatewayType, PurchaseType, TransactionStatus
-from src.telegram.states import Subscription
+from src.telegram.states import MainMenu, Subscription
 
 PAYMENT_CACHE_KEY = "payment_cache"
 CURRENT_DURATION_KEY = "selected_duration"
@@ -425,3 +425,18 @@ async def on_get_subscription(
     payment_id = dialog_manager.dialog_data["payment_id"]
     logger.info(f"{user.log} Getted free subscription '{payment_id}'")
     await process_payment.system(ProcessPaymentDto(payment_id, TransactionStatus.COMPLETED))
+
+
+
+@inject
+async def on_open_connect_guide_start(
+    callback: CallbackQuery,
+    widget: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    files = [ASSETS_DIR / f"instr{i}.jpg" for i in range(1, 4)]
+    existing = [f for f in files if f.exists()]
+    if existing:
+        media = [InputMediaPhoto(media=FSInputFile(str(f))) for f in existing]
+        await callback.message.answer_media_group(media=media)
+    await dialog_manager.start(MainMenu.CONNECT_GUIDE, mode=StartMode.RESET_STACK)
