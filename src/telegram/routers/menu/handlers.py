@@ -13,7 +13,7 @@ from src.application.common import Notifier, TranslatorRunner
 from src.application.common.dao import SettingsDao, SubscriptionDao
 from src.application.dto import MessagePayloadDto
 from src.core.constants import ASSETS_DIR
-from src.telegram.keyboards import get_buy_keyboard
+from src.telegram.keyboards import get_welcome_keyboard
 from src.application.dto import MediaDescriptorDto, MessagePayloadDto, PlanSnapshotDto, UserDto
 from src.application.services import BotService
 from src.application.use_cases.referral.queries.code import GenerateReferralQr
@@ -61,7 +61,7 @@ async def on_start_command(
             user,
             MessagePayloadDto(
                 i18n_key="ntf-user-welcome",
-                reply_markup=get_buy_keyboard(),
+                reply_markup=get_welcome_keyboard(),
                 disable_default_markup=True,
                 delete_after=None,
             ),

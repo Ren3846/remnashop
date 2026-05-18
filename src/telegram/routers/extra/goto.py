@@ -9,11 +9,29 @@ from loguru import logger
 from src.application.common import Notifier
 from src.application.dto import UserDto
 from src.application.use_cases.user.queries.plans import GetAvailablePlanByCode
-from src.core.constants import GOTO_PREFIX, PAYMENT_PREFIX, TARGET_TELEGRAM_ID
+from src.core.constants import GOTO_PREFIX, PAYMENT_PREFIX, TARGET_TELEGRAM_ID, WELCOME_CTA
 from src.core.enums import Deeplink
 from src.telegram.states import DashboardUser, MainMenu, Subscription, state_from_string
 
 router = Router(name=__name__)
+
+
+@router.callback_query(F.data == WELCOME_CTA)
+async def on_welcome_cta(
+    callback: CallbackQuery,
+    dialog_manager: DialogManager,
+    user: UserDto,
+) -> None:
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await dialog_manager.bg(
+        user_id=user.telegram_id,
+        chat_id=user.telegram_id,
+    ).start(
+        state=Subscription.MAIN,
+        mode=StartMode.RESET_STACK,
+        show_mode=ShowMode.DELETE_AND_SEND,
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith(GOTO_PREFIX))

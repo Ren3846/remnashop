@@ -9,7 +9,7 @@ from aiogram_dialog.widgets.style import Style
 from aiogram_dialog.widgets.text import Format
 from magic_filter import F
 
-from src.core.constants import DOCS, GOTO_PREFIX, PAYMENT_PREFIX, REPOSITORY, T_ME
+from src.core.constants import DOCS, GOTO_PREFIX, PAYMENT_PREFIX, REPOSITORY, T_ME, WELCOME_CTA
 from src.core.enums import ButtonType, PurchaseType
 from src.telegram.states import DashboardUser, MainMenu, Notification, Subscription
 from src.telegram.widgets import I18nFormat
@@ -134,6 +134,17 @@ def get_renew_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             text="btn-goto.subscription-renew",
             callback_data=f"{GOTO_PREFIX}{PAYMENT_PREFIX}{PurchaseType.RENEW}",
+        ),
+    )
+    return builder.as_markup()
+
+
+def get_welcome_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="btn-goto.subscription",
+            callback_data=WELCOME_CTA,
         ),
     )
     return builder.as_markup()

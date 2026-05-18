@@ -38,6 +38,7 @@ CONTAINER_KEY: Final[str] = "dishka_container"
 CONFIG_KEY: Final[str] = "config"
 USER_KEY: Final[str] = "user"
 IS_NEW_USER_KEY: Final[str] = "is_new_user"
+WELCOME_CTA: Final[str] = "welcome_cta"
 TARGET_TELEGRAM_ID: Final[str] = "target_telegram_id"
 
 TIMEZONE: Final[timezone] = timezone.utc
