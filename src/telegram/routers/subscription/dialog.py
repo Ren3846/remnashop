@@ -27,6 +27,7 @@ from .handlers import (
     on_open_connect_guide_start,
     on_payment_method_select,
     on_plan_select,
+    on_subscription_dialog_start,
     on_subscription_plans,
 )
 
@@ -296,4 +297,5 @@ router = Dialog(
     success_payment,
     success_trial,
     failed,
+    on_start=on_subscription_dialog_start,
 )

@@ -1,10 +1,10 @@
-from typing import Optional, TypedDict, cast
+from typing import Any, Optional, TypedDict, cast
 
 from adaptix import Retort
 from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto
 from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.kbd import Button, Select
-from dishka import FromDishka
+from dishka import AsyncContainer, FromDishka
 from dishka.integrations.aiogram_dialog import inject
 from loguru import logger
 
@@ -20,7 +20,7 @@ from src.application.use_cases.gateways.commands.payment import (
 )
 from src.application.use_cases.plan.queries.match import MatchPlan, MatchPlanDto
 from src.application.use_cases.user.queries.plans import GetAvailablePlans
-from src.core.constants import ASSETS_DIR, PAYMENT_PREFIX, USER_KEY
+from src.core.constants import ASSETS_DIR, CONTAINER_KEY, PAYMENT_PREFIX, USER_KEY
 from src.core.enums import PaymentGatewayType, PurchaseType, TransactionStatus
 from src.telegram.states import MainMenu, Subscription
 
@@ -96,6 +96,34 @@ async def _create_payment_and_get_data(
         logger.error(f"{user.log} Failed to create paymen")
         await notifier.notify_user(user, i18n_key="ntf-subscription.payment-creation-failed")
         raise
+
+
+async def on_subscription_dialog_start(start_data: Any, manager: DialogManager) -> None:
+    if not start_data or not start_data.get("auto_buy"):
+        return
+
+    container: AsyncContainer = manager.middleware_data[CONTAINER_KEY]
+    user: UserDto = manager.middleware_data[USER_KEY]
+
+    get_available_plans: GetAvailablePlans = await container.get(GetAvailablePlans)
+    retort: Retort = await container.get(Retort)
+    payment_gateway_dao: PaymentGatewayDao = await container.get(PaymentGatewayDao)
+
+    plans: list[PlanDto] = await get_available_plans.system(user)
+    gateways = await payment_gateway_dao.get_active()
+
+    if not plans or not gateways:
+        return
+
+    manager.dialog_data["purchase_type"] = PurchaseType.NEW
+
+    if len(plans) == 1:
+        manager.dialog_data[PlanDto.__name__] = retort.dump(plans[0])
+        manager.dialog_data["only_single_plan"] = True
+        await manager.switch_to(Subscription.DURATION)
+    else:
+        manager.dialog_data["only_single_plan"] = False
+        await manager.switch_to(Subscription.PLANS)
 
 
 @inject

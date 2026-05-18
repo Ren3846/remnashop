@@ -22,12 +22,13 @@ async def on_welcome_cta(
     dialog_manager: DialogManager,
     user: UserDto,
 ) -> None:
-    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.delete()
     await dialog_manager.bg(
         user_id=user.telegram_id,
         chat_id=user.telegram_id,
     ).start(
         state=Subscription.MAIN,
+        data={"auto_buy": True},
         mode=StartMode.RESET_STACK,
         show_mode=ShowMode.DELETE_AND_SEND,
     )
