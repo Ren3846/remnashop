@@ -6,13 +6,14 @@ from aiogram_dialog.api.internal import FakeUser
 from dishka import AsyncContainer
 from loguru import logger
 
+from src.application.common.dao import UserDao
 from src.application.use_cases.user.commands.registration import (
     GetOrCreateUser,
     GetOrCreateUserDto,
     UpdateUserFromTelegram,
     UpdateUserFromTelegramDto,
 )
-from src.core.constants import CONTAINER_KEY, USER_KEY
+from src.core.constants import CONTAINER_KEY, IS_NEW_USER_KEY, USER_KEY
 from src.core.enums import MiddlewareEventType
 
 from .base import EventTypedMiddleware
@@ -43,6 +44,14 @@ class UserMiddleware(EventTypedMiddleware):
         container: AsyncContainer = data[CONTAINER_KEY]
         get_or_create_user = await container.get(GetOrCreateUser)
         update_user_from_telegram = await container.get(UpdateUserFromTelegram)
+
+        if not isinstance(aiogram_user, FakeUser):
+            user_dao = await container.get(UserDao)
+            existing = await user_dao.get_by_telegram_id(aiogram_user.id)
+            data[IS_NEW_USER_KEY] = existing is None
+        else:
+            data[IS_NEW_USER_KEY] = False
+
         user = await get_or_create_user.system(GetOrCreateUserDto.from_aiogram(aiogram_user, event))
 
         if user and not isinstance(aiogram_user, FakeUser):

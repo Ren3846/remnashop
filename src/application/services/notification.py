@@ -31,7 +31,7 @@ from src.application.dto import (
 )
 from src.application.events import ErrorEvent, RemnawaveVersionWarningEvent, SystemEvent
 from src.application.events.base import UserEvent
-from src.application.events.system import RemnashopWelcomeEvent, UserRegisteredEvent
+from src.application.events.system import RemnashopWelcomeEvent
 from src.core.config import AppConfig
 from src.core.enums import Locale, Role
 from src.core.types import AnyKeyboard
@@ -91,23 +91,6 @@ class NotificationService(Notifier):
             return
 
         await self.notify_admins(event.as_payload(), roles=[Role.OWNER, Role.DEV])
-
-    @on_event(UserRegisteredEvent)
-    async def on_user_registered_welcome(self, event: UserRegisteredEvent) -> None:
-        logger.info(f"Sending welcome message to new user '{event.telegram_id}'")
-        user = TempUserDto(
-            telegram_id=event.telegram_id,
-            name=event.name,
-            language=self.config.default_locale,
-        )
-        await self.notify_user(
-            user,
-            MessagePayloadDto(
-                i18n_key="ntf-user-welcome",
-                disable_default_markup=True,
-                delete_after=None,
-            ),
-        )
 
     @on_event(RemnashopWelcomeEvent)
     async def on_remnashop_welcome_event(self, event: RemnashopWelcomeEvent) -> None:

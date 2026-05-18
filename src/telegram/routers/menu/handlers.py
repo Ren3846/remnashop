@@ -11,7 +11,9 @@ from remnapy.utils.happ_crypt import create_happ_crypto_link
 
 from src.application.common import Notifier, TranslatorRunner
 from src.application.common.dao import SettingsDao, SubscriptionDao
+from src.application.dto import MessagePayloadDto
 from src.core.constants import ASSETS_DIR
+from src.telegram.keyboards import get_buy_keyboard
 from src.application.dto import MediaDescriptorDto, MessagePayloadDto, PlanSnapshotDto, UserDto
 from src.application.services import BotService
 from src.application.use_cases.referral.queries.code import GenerateReferralQr
@@ -45,8 +47,26 @@ async def on_start_dialog(user: UserDto, dialog_manager: DialogManager) -> None:
     )
 
 
+@inject
 @router.message(CommandStart(ignore_case=True))
-async def on_start_command(message: Message, user: UserDto, dialog_manager: DialogManager) -> None:
+async def on_start_command(
+    message: Message,
+    user: UserDto,
+    dialog_manager: DialogManager,
+    notifier: FromDishka[Notifier],
+    is_new_user: bool = False,
+) -> None:
+    if is_new_user:
+        await notifier.notify_user(
+            user,
+            MessagePayloadDto(
+                i18n_key="ntf-user-welcome",
+                reply_markup=get_buy_keyboard(),
+                disable_default_markup=True,
+                delete_after=None,
+            ),
+        )
+        return
     await on_start_dialog(user, dialog_manager)
 
 
