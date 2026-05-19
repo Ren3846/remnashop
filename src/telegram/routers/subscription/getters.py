@@ -8,7 +8,7 @@ from loguru import logger
 from remnapy.utils.happ_crypt import create_happ_crypto_link
 
 from src.application.common import TranslatorRunner
-from src.application.common.dao import PaymentGatewayDao, PlanDao, SettingsDao, SubscriptionDao
+from src.application.common.dao import PaymentGatewayDao, PlanDao, SettingsDao, SubscriptionDao, UserDao
 from src.application.dto import PlanDto, PriceDetailsDto, UserDto
 from src.application.services import PricingService
 from src.application.use_cases.plan.queries.match import MatchPlan, MatchPlanDto
@@ -22,6 +22,7 @@ from src.core.utils.i18n_helpers import (
     i18n_format_traffic_limit,
 )
 from src.telegram.states import Subscription
+from src.telegram.utils import get_dialog_user
 
 
 @inject
@@ -280,10 +281,11 @@ async def confirm_getter(
 async def getter_connect(
     dialog_manager: DialogManager,
     config: AppConfig,
-    user: UserDto,
+    user_dao: FromDishka[UserDao],
     subscription_dao: FromDishka[SubscriptionDao],
     **kwargs: Any,
 ) -> dict[str, Any]:
+    user = await get_dialog_user(dialog_manager, user_dao)
     current_subscription = await subscription_dao.get_current(user.telegram_id)
 
     if not current_subscription:
@@ -302,10 +304,11 @@ async def getter_connect(
 async def success_payment_getter(
     dialog_manager: DialogManager,
     config: AppConfig,
-    user: UserDto,
+    user_dao: FromDishka[UserDao],
     subscription_dao: FromDishka[SubscriptionDao],
     **kwargs: Any,
 ) -> dict[str, Any]:
+    user = await get_dialog_user(dialog_manager, user_dao)
     start_data = cast(dict[str, Any], dialog_manager.start_data)
     purchase_type: PurchaseType = start_data["purchase_type"]
     subscription = await subscription_dao.get_current(user.telegram_id)

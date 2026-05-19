@@ -1,0 +1,50 @@
+import asyncio
+from uuid import UUID
+
+from dishka import AsyncContainer, Scope
+from loguru import logger
+
+from src.application.common import EventPublisher
+from src.application.events import ErrorEvent
+from src.application.use_cases.gateways.commands.payment import ProcessPayment, ProcessPaymentDto
+from src.core.config import AppConfig
+from src.core.enums import TransactionStatus
+
+_payment_tasks: set[asyncio.Task[None]] = set()
+
+
+async def schedule_payment_processing(
+    container: AsyncContainer,
+    config: AppConfig,
+    payment_id: UUID,
+    payment_status: TransactionStatus,
+) -> None:
+    task = asyncio.create_task(
+        _process_payment(container, config, payment_id, payment_status),
+        name=f"process-payment-{payment_id}",
+    )
+    _payment_tasks.add(task)
+    task.add_done_callback(_payment_tasks.discard)
+    logger.debug(f"Scheduled payment processing for '{payment_id}'")
+
+
+async def _process_payment(
+    container: AsyncContainer,
+    config: AppConfig,
+    payment_id: UUID,
+    payment_status: TransactionStatus,
+) -> None:
+    try:
+        async with container(scope=Scope.REQUEST) as request_container:
+            process_payment = await request_container.get(ProcessPayment)
+            await process_payment.system(ProcessPaymentDto(payment_id, payment_status))
+    except Exception as e:
+        logger.exception(f"Failed to process payment '{payment_id}' in background")
+        try:
+            async with container(scope=Scope.REQUEST) as request_container:
+                event_publisher = await request_container.get(EventPublisher)
+                await event_publisher.publish(ErrorEvent(**config.build.data, exception=e))
+        except Exception as publish_error:
+            logger.exception(
+                f"Failed to publish error event for payment '{payment_id}': {publish_error}"
+            )

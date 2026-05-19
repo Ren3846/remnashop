@@ -1,6 +1,8 @@
+from typing import Any, Optional
 from uuid import UUID
 
 from aiogram import Bot
+from aiogram.fsm.state import State
 from aiogram_dialog import BgManagerFactory, ShowMode, StartMode
 from loguru import logger
 
@@ -19,80 +21,12 @@ class RedirectImpl(Redirect):
         self.bot = bot
         self.bg_manager_factory = bg_manager_factory
 
-    async def to_main_menu(self, telegram_id: int) -> None:
-        bg_manager = self.bg_manager_factory.bg(
-            bot=self.bot,
-            user_id=telegram_id,
-            chat_id=telegram_id,
-        )
-
-        await bg_manager.start(
-            state=MainMenu.MAIN,
-            mode=StartMode.RESET_STACK,
-            show_mode=ShowMode.DELETE_AND_SEND,
-        )
-        logger.info(f"User '{telegram_id}' redirected to main menu")
-
-    async def to_user_editor(self, telegram_id: int, target_telegram_id: int) -> None:
-        bg_manager = self.bg_manager_factory.bg(
-            bot=self.bot,
-            user_id=telegram_id,
-            chat_id=telegram_id,
-        )
-
-        await bg_manager.start(
-            state=DashboardUser.MAIN,
-            data={TARGET_TELEGRAM_ID: target_telegram_id},
-            mode=StartMode.RESET_STACK,
-            show_mode=ShowMode.DELETE_AND_SEND,
-        )
-        logger.info(f"User '{telegram_id}' redirected to user editor")
-
-    async def to_success_trial(self, telegram_id: int) -> None:
-        bg_manager = self.bg_manager_factory.bg(
-            bot=self.bot,
-            user_id=telegram_id,
-            chat_id=telegram_id,
-        )
-
-        await bg_manager.start(
-            state=Subscription.TRIAL,
-            mode=StartMode.RESET_STACK,
-            show_mode=ShowMode.DELETE_AND_SEND,
-        )
-        logger.info(f"User '{telegram_id}' redirected to success trial")
-
-    async def to_success_payment(self, telegram_id: int, purchase_type: PurchaseType) -> None:
-        bg_manager = self.bg_manager_factory.bg(
-            bot=self.bot,
-            user_id=telegram_id,
-            chat_id=telegram_id,
-        )
-
-        await bg_manager.start(
-            state=Subscription.SUCCESS,
-            data={"purchase_type": purchase_type},
-            mode=StartMode.RESET_STACK,
-            show_mode=ShowMode.DELETE_AND_SEND,
-        )
-        logger.info(f"User '{telegram_id}' redirected to success payment")
-
-    async def to_failed_payment(self, telegram_id: int) -> None:
-        bg_manager = self.bg_manager_factory.bg(
-            bot=self.bot,
-            user_id=telegram_id,
-            chat_id=telegram_id,
-        )
-
-        await bg_manager.start(
-            state=Subscription.FAILED,
-            mode=StartMode.RESET_STACK,
-            show_mode=ShowMode.DELETE_AND_SEND,
-        )
-        logger.info(f"User '{telegram_id}' redirected to failed payment")
-
-    async def to_post_payment_email(
-        self, telegram_id: int, payment_id: UUID, purchase_type: PurchaseType
+    async def _start_dialog(
+        self,
+        telegram_id: int,
+        state: State,
+        action: str,
+        data: Optional[dict[str, Any]] = None,
     ) -> None:
         bg_manager = self.bg_manager_factory.bg(
             bot=self.bot,
@@ -100,12 +34,62 @@ class RedirectImpl(Redirect):
             chat_id=telegram_id,
         )
 
-        await bg_manager.start(
+        try:
+            await bg_manager.start(
+                state=state,
+                data=data,
+                mode=StartMode.RESET_STACK,
+                show_mode=ShowMode.DELETE_AND_SEND,
+            )
+        except Exception as e:
+            logger.exception(f"Failed to redirect user '{telegram_id}' to {action}: {e}")
+            raise
+
+        logger.info(f"User '{telegram_id}' redirected to {action}")
+
+    async def to_main_menu(self, telegram_id: int) -> None:
+        await self._start_dialog(
+            telegram_id=telegram_id,
+            state=MainMenu.MAIN,
+            action="main menu",
+        )
+
+    async def to_user_editor(self, telegram_id: int, target_telegram_id: int) -> None:
+        await self._start_dialog(
+            telegram_id=telegram_id,
+            state=DashboardUser.MAIN,
+            data={TARGET_TELEGRAM_ID: target_telegram_id},
+            action="user editor",
+        )
+
+    async def to_success_trial(self, telegram_id: int) -> None:
+        await self._start_dialog(
+            telegram_id=telegram_id,
+            state=Subscription.TRIAL,
+            action="success trial",
+        )
+
+    async def to_success_payment(self, telegram_id: int, purchase_type: PurchaseType) -> None:
+        await self._start_dialog(
+            telegram_id=telegram_id,
+            state=Subscription.SUCCESS,
+            data={"purchase_type": purchase_type},
+            action="success payment",
+        )
+
+    async def to_failed_payment(self, telegram_id: int) -> None:
+        await self._start_dialog(
+            telegram_id=telegram_id,
+            state=Subscription.FAILED,
+            action="failed payment",
+        )
+
+    async def to_post_payment_email(
+        self, telegram_id: int, payment_id: UUID, purchase_type: PurchaseType
+    ) -> None:
+        await self._start_dialog(
+            telegram_id=telegram_id,
             state=Subscription.EMAIL,
             data={"payment_id": str(payment_id), "purchase_type": purchase_type.value},
-            mode=StartMode.RESET_STACK,
-            show_mode=ShowMode.DELETE_AND_SEND,
-        )
-        logger.info(
-            f"User '{telegram_id}' redirected to post-payment email for payment '{payment_id}'"
+            action=f"post-payment email for payment '{payment_id}'",
         )

@@ -4,11 +4,25 @@ from typing import Callable, Optional
 from aiogram_dialog import DialogManager
 from aiogram_dialog.widgets.common.when import Whenable
 
+from src.application.common.dao import UserDao
 from src.application.common.policy import Permission, PermissionPolicy
 from src.application.dto import UserDto
 from src.core.constants import USER_KEY
 from src.core.enums import Role
 from src.core.utils.time import datetime_now
+
+
+async def get_dialog_user(dialog_manager: DialogManager, user_dao: UserDao) -> UserDto:
+    user = dialog_manager.middleware_data.get(USER_KEY)
+    if user is not None:
+        return user
+
+    telegram_id = dialog_manager.event.from_user.id
+    user = await user_dao.get_by_telegram_id(telegram_id)
+    if user is None:
+        raise ValueError(f"User '{telegram_id}' not found for dialog rendering")
+
+    return user
 
 
 def is_double_click(dialog_manager: DialogManager, key: str, cooldown: int = 10) -> bool:

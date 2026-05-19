@@ -8,7 +8,7 @@ from loguru import logger
 from remnapy.utils.happ_crypt import create_happ_crypto_link
 
 from src.application.common import Remnawave, TranslatorRunner
-from src.application.common.dao import ReferralDao, SettingsDao, SubscriptionDao
+from src.application.common.dao import ReferralDao, SettingsDao, SubscriptionDao, UserDao
 from src.application.dto import UserDto
 from src.application.services import BotService
 from src.application.use_cases.misc.queries.menu import GetMenuData
@@ -20,19 +20,21 @@ from src.core.utils.i18n_helpers import (
     i18n_format_traffic_limit,
 )
 from src.core.utils.time import get_traffic_reset_delta
+from src.telegram.utils import get_dialog_user
 
 
 @inject
 async def menu_getter(
     dialog_manager: DialogManager,
     config: AppConfig,
-    user: UserDto,
+    user_dao: FromDishka[UserDao],
     bot_service: FromDishka[BotService],
     i18n: FromDishka[TranslatorRunner],
     get_menu_data: FromDishka[GetMenuData],
     **kwargs: Any,
 ) -> dict[str, Any]:
     try:
+        user = await get_dialog_user(dialog_manager, user_dao)
         menu_data = await get_menu_data(user)
         support_url = bot_service.get_support_url(text=i18n.get("message.help"))
 

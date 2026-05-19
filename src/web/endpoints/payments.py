@@ -9,7 +9,7 @@ from src.application.use_cases.gateways.queries.providers import GetPaymentGatew
 from src.core.config import AppConfig
 from src.core.constants import API_V1, PAYMENTS_WEBHOOK_PATH
 from src.core.enums import PaymentGatewayType
-from src.infrastructure.taskiq.tasks.payments import handle_payment_transaction_task
+from src.web.payment_processing import schedule_payment_processing
 
 router = APIRouter(prefix=API_V1 + PAYMENTS_WEBHOOK_PATH)
 
@@ -42,7 +42,12 @@ async def payments_webhook(
             return Response(status_code=status.HTTP_404_NOT_FOUND)
 
         payment_id, payment_status = await gateway.handle_webhook(request)
-        await handle_payment_transaction_task.kiq(payment_id, payment_status)  # type: ignore[call-overload]
+        await schedule_payment_processing(
+            request.app.state.dishka_container,
+            config,
+            payment_id,
+            payment_status,
+        )
 
     except Exception as e:
         logger.exception(f"Error processing webhook for '{gateway_type}': {e}")
