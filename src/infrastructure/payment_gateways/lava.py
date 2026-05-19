@@ -118,7 +118,7 @@ class LavaGateway(BasePaymentGateway):
             return False
 
         secret = settings.webhook_secret.get_secret_value()  # type: ignore[union-attr]
-        expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+        expected = hashlib.sha256(raw_body + secret.encode()).hexdigest()
 
         if not hmac.compare_digest(expected, signature):
             logger.warning("Invalid Lava.top webhook signature")
