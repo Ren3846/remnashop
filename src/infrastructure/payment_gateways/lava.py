@@ -18,6 +18,35 @@ from src.core.enums import TransactionStatus
 from .base import BasePaymentGateway
 
 
+def verify_lava_webhook(request: Request, raw_body: bytes, secret: str) -> bool:
+    signature = request.headers.get("signature")
+    if signature:
+        if hmac.compare_digest(signature, secret):
+            return True
+
+        expected_sha256 = hashlib.sha256(raw_body + secret.encode()).hexdigest()
+        if hmac.compare_digest(expected_sha256, signature):
+            return True
+
+        expected_hmac = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+        if hmac.compare_digest(expected_hmac, signature):
+            return True
+
+        logger.warning("Invalid Lava.top webhook signature")
+        return False
+
+    api_key = request.headers.get("x-api-key")
+    if api_key:
+        if hmac.compare_digest(api_key, secret):
+            return True
+
+        logger.warning("Invalid Lava.top webhook X-Api-Key")
+        return False
+
+    logger.warning("Lava.top webhook missing 'signature' or 'X-Api-Key' header")
+    return False
+
+
 # https://gate.lava.top/docs
 class LavaGateway(BasePaymentGateway):
     _client: AsyncClient
@@ -111,17 +140,5 @@ class LavaGateway(BasePaymentGateway):
 
     def _verify_webhook(self, request: Request, raw_body: bytes) -> bool:
         settings: LavaGatewaySettingsDto = self.data.settings  # type: ignore[assignment]
-        signature = request.headers.get("signature")
-
-        if not signature:
-            logger.warning("Lava.top webhook missing 'signature' header")
-            return False
-
         secret = settings.webhook_secret.get_secret_value()  # type: ignore[union-attr]
-        expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
-
-        if not hmac.compare_digest(expected, signature):
-            logger.warning("Invalid Lava.top webhook signature")
-            return False
-
-        return True
+        return verify_lava_webhook(request, raw_body, secret)

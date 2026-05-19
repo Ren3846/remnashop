@@ -1,4 +1,3 @@
-import hashlib
 import hmac
 import re
 import uuid
@@ -21,6 +20,7 @@ from src.application.dto.payment_gateway import LavaGatewaySettingsDto
 from src.core.config import AppConfig
 from src.core.config.mailgun import MailgunConfig
 from src.core.enums import PaymentGatewayType
+from src.infrastructure.payment_gateways.lava import verify_lava_webhook
 
 router = APIRouter(prefix="/checkout")
 
@@ -131,10 +131,8 @@ async def lava_landing_webhook(
 
     settings: LavaGatewaySettingsDto = gateway.settings
     secret = settings.webhook_secret.get_secret_value()  # type: ignore[union-attr]
-    signature = request.headers.get("signature", "")
-    expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
-    if not hmac.compare_digest(expected, signature):
+    if not verify_lava_webhook(request, body, secret):
         logger.warning("Invalid Lava landing webhook signature")
         return Response(status_code=status.HTTP_200_OK)
 
