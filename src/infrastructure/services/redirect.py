@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from aiogram import Bot
 from aiogram_dialog import BgManagerFactory, ShowMode, StartMode
 from loguru import logger
@@ -88,3 +90,22 @@ class RedirectImpl(Redirect):
             show_mode=ShowMode.DELETE_AND_SEND,
         )
         logger.info(f"User '{telegram_id}' redirected to failed payment")
+
+    async def to_post_payment_email(
+        self, telegram_id: int, payment_id: UUID, purchase_type: PurchaseType
+    ) -> None:
+        bg_manager = self.bg_manager_factory.bg(
+            bot=self.bot,
+            user_id=telegram_id,
+            chat_id=telegram_id,
+        )
+
+        await bg_manager.start(
+            state=Subscription.EMAIL,
+            data={"payment_id": str(payment_id), "purchase_type": purchase_type.value},
+            mode=StartMode.RESET_STACK,
+            show_mode=ShowMode.DELETE_AND_SEND,
+        )
+        logger.info(
+            f"User '{telegram_id}' redirected to post-payment email for payment '{payment_id}'"
+        )

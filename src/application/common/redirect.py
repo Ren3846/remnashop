@@ -1,4 +1,5 @@
 from typing import Protocol
+from uuid import UUID
 
 from src.core.enums import PurchaseType
 
@@ -13,3 +14,7 @@ class Redirect(Protocol):
     async def to_success_payment(self, telegram_id: int, purchase_type: PurchaseType) -> None: ...
 
     async def to_failed_payment(self, telegram_id: int) -> None: ...
+
+    async def to_post_payment_email(
+        self, telegram_id: int, payment_id: UUID, purchase_type: PurchaseType
+    ) -> None: ...

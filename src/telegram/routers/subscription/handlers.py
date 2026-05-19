@@ -1,5 +1,6 @@
 import re
 from typing import Any, Optional, TypedDict, cast
+from uuid import UUID
 
 from adaptix import Retort
 from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto, Message
@@ -15,6 +16,8 @@ from src.application.common.dao import PaymentGatewayDao, PlanDao, SettingsDao, 
 from src.application.dto import PlanDto, PlanSnapshotDto, UserDto
 from src.application.services import PricingService
 from src.application.use_cases.gateways.commands.payment import (
+    CompletePaidPurchase,
+    CompletePaidPurchaseDto,
     CreatePayment,
     CreatePaymentDto,
     ProcessPayment,
@@ -132,12 +135,8 @@ async def on_subscription_dialog_start(start_data: Any, manager: DialogManager) 
         await manager.switch_to(Subscription.PLANS)
 
 
-async def _switch_to_confirm_or_email(dialog_manager: DialogManager) -> None:
-    user: UserDto = dialog_manager.middleware_data[USER_KEY]
-    if user.email:
-        await _switch_to_confirm_or_email(dialog_manager)
-    else:
-        await dialog_manager.switch_to(state=Subscription.EMAIL)
+async def _switch_to_confirm(dialog_manager: DialogManager) -> None:
+    await dialog_manager.switch_to(state=Subscription.CONFIRM)
 
 
 @inject
@@ -146,6 +145,7 @@ async def on_email_input(
     widget: MessageInput,
     dialog_manager: DialogManager,
     set_user_email: FromDishka[SetUserEmail],
+    complete_paid_purchase: FromDishka[CompletePaidPurchase],
     notifier: FromDishka[Notifier],
 ) -> None:
     user: UserDto = dialog_manager.middleware_data[USER_KEY]
@@ -155,9 +155,24 @@ async def on_email_input(
         await notifier.notify_user(user=user, i18n_key="ntf-subscription.invalid-email")
         return
 
+    start_data = cast(dict[str, Any], dialog_manager.start_data or {})
+    payment_id_str = start_data.get("payment_id")
+    if not payment_id_str:
+        logger.error(f"{user.log} Email input without pending payment_id")
+        await notifier.notify_user(user, i18n_key="ntf-subscription.payment-creation-failed")
+        return
+
     await set_user_email(user, SetUserEmailDto(telegram_id=user.telegram_id, email=email))
     user.email = email
-    await dialog_manager.switch_to(state=Subscription.CONFIRM)
+
+    try:
+        await complete_paid_purchase.system(
+            CompletePaidPurchaseDto(payment_id=UUID(payment_id_str))
+        )
+    except Exception:
+        logger.exception(f"{user.log} Failed to activate subscription after email input")
+        await notifier.notify_user(user, i18n_key="ntf-subscription.payment-creation-failed")
+        raise
 
 
 @inject
@@ -300,7 +315,7 @@ async def on_subscription_plans(  # noqa: C901
                 if payment_data:
                     _save_payment_data(dialog_manager, payment_data)
 
-                await _switch_to_confirm_or_email(dialog_manager)
+                await _switch_to_confirm(dialog_manager)
                 return
 
             await dialog_manager.switch_to(state=Subscription.PAYMENT_METHOD)
@@ -393,7 +408,7 @@ async def on_duration_select(
         if cache_key in cache:
             logger.info(f"{user.log} Re-selected same duration and single gateway")
             _save_payment_data(dialog_manager, cache[cache_key])
-            await _switch_to_confirm_or_email(dialog_manager)
+            await _switch_to_confirm(dialog_manager)
             return
 
         logger.info(f"{user.log} Auto-selected single gateway '{selected_payment_method}'")
@@ -413,7 +428,7 @@ async def on_duration_select(
         if payment_data:
             cache[cache_key] = payment_data
             _save_payment_data(dialog_manager, payment_data)
-            await _switch_to_confirm_or_email(dialog_manager)
+            await _switch_to_confirm(dialog_manager)
             return
 
     dialog_manager.dialog_data.pop(CURRENT_METHOD_KEY, None)
@@ -443,7 +458,7 @@ async def on_payment_method_select(
     if cache_key in cache:
         logger.info(f"{user.log} Re-selected same method and duration")
         _save_payment_data(dialog_manager, cache[cache_key])
-        await _switch_to_confirm_or_email(dialog_manager)
+        await _switch_to_confirm(dialog_manager)
         return
 
     logger.info(f"{user.log} New combination. Creating new payment")
@@ -473,7 +488,7 @@ async def on_payment_method_select(
         cache[cache_key] = payment_data
         _save_payment_data(dialog_manager, payment_data)
 
-    await _switch_to_confirm_or_email(dialog_manager)
+    await _switch_to_confirm(dialog_manager)
 
 
 @inject

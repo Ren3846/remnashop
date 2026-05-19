@@ -9,6 +9,7 @@ from src.application.common import (
     EventPublisher,
     Interactor,
     Notifier,
+    Redirect,
     TranslatorHub,
     TranslatorRunner,
 )
@@ -247,6 +248,7 @@ class ProcessPayment(Interactor[ProcessPaymentDto, None]):
         referral_dao: ReferralDao,
         event_publisher: EventPublisher,
         notifier: Notifier,
+        redirect: Redirect,
         i18n: TranslatorRunner,
         assign_referral_rewards: AssignReferralRewards,
         purchase_subscription: PurchaseSubscription,
@@ -258,6 +260,7 @@ class ProcessPayment(Interactor[ProcessPaymentDto, None]):
         self.referral_dao = referral_dao
         self.event_publisher = event_publisher
         self.notifier = notifier
+        self.redirect = redirect
         self.i18n = i18n
         self.assign_referral_rewards = assign_referral_rewards
         self.purchase_subscription = purchase_subscription
@@ -308,47 +311,152 @@ class ProcessPayment(Interactor[ProcessPaymentDto, None]):
             await self.notifier.notify_user(user, i18n_key="ntf-gateway.test-payment-confirmed")
             return
 
+        if not user.email:
+            await self.redirect.to_post_payment_email(
+                user.telegram_id,
+                transaction.payment_id,
+                transaction.purchase_type,
+            )
+            return
+
+        await self._activate_paid_purchase(user, transaction)
+
+    async def _activate_paid_purchase(self, user: UserDto, transaction: TransactionDto) -> None:
+        await activate_paid_purchase(
+            subscription_dao=self.subscription_dao,
+            event_publisher=self.event_publisher,
+            i18n=self.i18n,
+            purchase_subscription=self.purchase_subscription,
+            assign_referral_rewards=self.assign_referral_rewards,
+            user=user,
+            transaction=transaction,
+        )
+
+
+async def activate_paid_purchase(
+    *,
+    subscription_dao: SubscriptionDao,
+    event_publisher: EventPublisher,
+    i18n: TranslatorRunner,
+    purchase_subscription: PurchaseSubscription,
+    assign_referral_rewards: AssignReferralRewards,
+    user: UserDto,
+    transaction: TransactionDto,
+) -> None:
+    subscription = await subscription_dao.get_current(user.telegram_id)
+    old_plan = subscription.plan_snapshot if subscription else None
+
+    event = UserPurchaseEvent(
+        telegram_id=user.telegram_id,
+        name=user.name,
+        username=user.username,
+        #
+        purchase_type=transaction.purchase_type,
+        is_trial_plan=transaction.plan_snapshot.is_trial,
+        payment_id=transaction.payment_id,
+        gateway_type=transaction.gateway_type,
+        final_amount=transaction.pricing.final_amount,
+        discount_percent=transaction.pricing.discount_percent,
+        original_amount=transaction.pricing.original_amount,
+        currency=transaction.currency.symbol,
+        #
+        plan_name=transaction.plan_snapshot.name,
+        plan_type=transaction.plan_snapshot.type,
+        plan_traffic_limit=i18n_format_traffic_limit(transaction.plan_snapshot.traffic_limit),
+        plan_device_limit=i18n_format_device_limit(transaction.plan_snapshot.device_limit),
+        plan_duration=i18n_format_days(transaction.plan_snapshot.duration),
+        #
+        previous_plan_name=i18n.get(old_plan.name) if old_plan else "N/A",
+        previous_plan_type={
+            "key": "plan-type",
+            "plan_type": old_plan.type if old_plan else "N/A",
+        },
+        previous_plan_traffic_limit=i18n_format_traffic_limit(old_plan.traffic_limit)
+        if old_plan
+        else "N/A",
+        previous_plan_device_limit=i18n_format_device_limit(old_plan.device_limit)
+        if old_plan
+        else "N/A",
+        previous_plan_duration=i18n_format_days(old_plan.duration) if old_plan else "N/A",
+    )
+
+    await event_publisher.publish(event)
+    await purchase_subscription.system(PurchaseSubscriptionDto(user, transaction, subscription))
+
+    if not transaction.pricing.is_free:
+        await assign_referral_rewards.system(AssignReferralRewardsDto(user, transaction))
+
+
+@dataclass(frozen=True)
+class CompletePaidPurchaseDto:
+    payment_id: UUID
+
+
+class CompletePaidPurchase(Interactor[CompletePaidPurchaseDto, None]):
+    required_permission = None
+
+    def __init__(
+        self,
+        uow: UnitOfWork,
+        user_dao: UserDao,
+        transaction_dao: TransactionDao,
+        subscription_dao: SubscriptionDao,
+        event_publisher: EventPublisher,
+        redirect: Redirect,
+        i18n: TranslatorRunner,
+        assign_referral_rewards: AssignReferralRewards,
+        purchase_subscription: PurchaseSubscription,
+    ) -> None:
+        self.uow = uow
+        self.user_dao = user_dao
+        self.transaction_dao = transaction_dao
+        self.subscription_dao = subscription_dao
+        self.event_publisher = event_publisher
+        self.redirect = redirect
+        self.i18n = i18n
+        self.assign_referral_rewards = assign_referral_rewards
+        self.purchase_subscription = purchase_subscription
+
+    async def _execute(self, actor: UserDto, data: CompletePaidPurchaseDto) -> None:
+        async with self.uow:
+            transaction = await self.transaction_dao.get_by_payment_id(data.payment_id)
+
+            if not transaction or not transaction.is_completed:
+                logger.warning(f"Paid purchase activation skipped: transaction '{data.payment_id}'")
+                return
+
+            user = await self.user_dao.get_by_telegram_id(transaction.user_telegram_id)
+
+            if not user or not user.email:
+                logger.warning(
+                    f"Paid purchase activation skipped: user '{transaction.user_telegram_id}' "
+                    "has no email"
+                )
+                return
+
+            if await self._is_already_activated(transaction, user):
+                await self.redirect.to_success_payment(user.telegram_id, transaction.purchase_type)
+                await self.uow.commit()
+                return
+
+            await activate_paid_purchase(
+                subscription_dao=self.subscription_dao,
+                event_publisher=self.event_publisher,
+                i18n=self.i18n,
+                purchase_subscription=self.purchase_subscription,
+                assign_referral_rewards=self.assign_referral_rewards,
+                user=user,
+                transaction=transaction,
+            )
+            await self.uow.commit()
+
+            logger.info(
+                f"Paid purchase '{data.payment_id}' activated for user '{user.telegram_id}'"
+            )
+
+    async def _is_already_activated(self, transaction: TransactionDto, user: UserDto) -> bool:
+        if transaction.purchase_type != PurchaseType.NEW:
+            return False
+
         subscription = await self.subscription_dao.get_current(user.telegram_id)
-        old_plan = subscription.plan_snapshot if subscription else None
-
-        event = UserPurchaseEvent(
-            telegram_id=user.telegram_id,
-            name=user.name,
-            username=user.username,
-            #
-            purchase_type=transaction.purchase_type,
-            is_trial_plan=transaction.plan_snapshot.is_trial,
-            payment_id=transaction.payment_id,
-            gateway_type=transaction.gateway_type,
-            final_amount=transaction.pricing.final_amount,
-            discount_percent=transaction.pricing.discount_percent,
-            original_amount=transaction.pricing.original_amount,
-            currency=transaction.currency.symbol,
-            #
-            plan_name=transaction.plan_snapshot.name,
-            plan_type=transaction.plan_snapshot.type,
-            plan_traffic_limit=i18n_format_traffic_limit(transaction.plan_snapshot.traffic_limit),
-            plan_device_limit=i18n_format_device_limit(transaction.plan_snapshot.device_limit),
-            plan_duration=i18n_format_days(transaction.plan_snapshot.duration),
-            #
-            previous_plan_name=self.i18n.get(old_plan.name) if old_plan else "N/A",
-            previous_plan_type={
-                "key": "plan-type",
-                "plan_type": old_plan.type if old_plan else "N/A",
-            },
-            previous_plan_traffic_limit=i18n_format_traffic_limit(old_plan.traffic_limit)
-            if old_plan
-            else "N/A",
-            previous_plan_device_limit=i18n_format_device_limit(old_plan.device_limit)
-            if old_plan
-            else "N/A",
-            previous_plan_duration=i18n_format_days(old_plan.duration) if old_plan else "N/A",
-        )
-
-        await self.event_publisher.publish(event)
-        await self.purchase_subscription.system(
-            PurchaseSubscriptionDto(user, transaction, subscription)
-        )
-
-        if not transaction.pricing.is_free:
-            await self.assign_referral_rewards.system(AssignReferralRewardsDto(user, transaction))
+        return subscription is not None and not subscription.is_trial

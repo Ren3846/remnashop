@@ -8,6 +8,7 @@ from .commands.configuration import (
     UpdatePaymentGatewaySettings,
 )
 from .commands.payment import (
+    CompletePaidPurchase,
     CreateDefaultPaymentGateway,
     CreatePayment,
     CreateTestPayment,
@@ -24,4 +25,5 @@ GATEWAYS_USE_CASES: Final[tuple[type[Interactor], ...]] = (
     CreatePayment,
     CreateTestPayment,
     ProcessPayment,
+    CompletePaidPurchase,
 )
