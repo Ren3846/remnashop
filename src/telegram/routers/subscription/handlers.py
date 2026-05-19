@@ -1,8 +1,10 @@
+import re
 from typing import Any, Optional, TypedDict, cast
 
 from adaptix import Retort
-from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto
+from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto, Message
 from aiogram_dialog import DialogManager, StartMode
+from aiogram_dialog.widgets.input import MessageInput
 from aiogram_dialog.widgets.kbd import Button, Select
 from dishka import AsyncContainer, FromDishka
 from dishka.integrations.aiogram_dialog import inject
@@ -20,9 +22,12 @@ from src.application.use_cases.gateways.commands.payment import (
 )
 from src.application.use_cases.plan.queries.match import MatchPlan, MatchPlanDto
 from src.application.use_cases.user.queries.plans import GetAvailablePlans
+from src.application.use_cases.user import SetUserEmail, SetUserEmailDto
 from src.core.constants import ASSETS_DIR, CONTAINER_KEY, PAYMENT_PREFIX, USER_KEY
 from src.core.enums import PaymentGatewayType, PurchaseType, TransactionStatus
 from src.telegram.states import MainMenu, Subscription
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 PAYMENT_CACHE_KEY = "payment_cache"
 CURRENT_DURATION_KEY = "selected_duration"
@@ -83,6 +88,7 @@ async def _create_payment_and_get_data(
                 pricing=pricing,
                 purchase_type=purchase_type,
                 gateway_type=gateway_type,
+                email=user.email,
             ),
         )
 
@@ -124,6 +130,34 @@ async def on_subscription_dialog_start(start_data: Any, manager: DialogManager) 
     else:
         manager.dialog_data["only_single_plan"] = False
         await manager.switch_to(Subscription.PLANS)
+
+
+async def _switch_to_confirm_or_email(dialog_manager: DialogManager) -> None:
+    user: UserDto = dialog_manager.middleware_data[USER_KEY]
+    if user.email:
+        await _switch_to_confirm_or_email(dialog_manager)
+    else:
+        await dialog_manager.switch_to(state=Subscription.EMAIL)
+
+
+@inject
+async def on_email_input(
+    message: Message,
+    widget: MessageInput,
+    dialog_manager: DialogManager,
+    set_user_email: FromDishka[SetUserEmail],
+    notifier: FromDishka[Notifier],
+) -> None:
+    user: UserDto = dialog_manager.middleware_data[USER_KEY]
+    email = (message.text or "").strip()
+
+    if not _EMAIL_RE.match(email):
+        await notifier.notify_user(user=user, i18n_key="ntf-subscription.invalid-email")
+        return
+
+    await set_user_email(user, SetUserEmailDto(telegram_id=user.telegram_id, email=email))
+    user.email = email
+    await dialog_manager.switch_to(state=Subscription.CONFIRM)
 
 
 @inject
@@ -266,7 +300,7 @@ async def on_subscription_plans(  # noqa: C901
                 if payment_data:
                     _save_payment_data(dialog_manager, payment_data)
 
-                await dialog_manager.switch_to(state=Subscription.CONFIRM)
+                await _switch_to_confirm_or_email(dialog_manager)
                 return
 
             await dialog_manager.switch_to(state=Subscription.PAYMENT_METHOD)
@@ -359,7 +393,7 @@ async def on_duration_select(
         if cache_key in cache:
             logger.info(f"{user.log} Re-selected same duration and single gateway")
             _save_payment_data(dialog_manager, cache[cache_key])
-            await dialog_manager.switch_to(state=Subscription.CONFIRM)
+            await _switch_to_confirm_or_email(dialog_manager)
             return
 
         logger.info(f"{user.log} Auto-selected single gateway '{selected_payment_method}'")
@@ -379,7 +413,7 @@ async def on_duration_select(
         if payment_data:
             cache[cache_key] = payment_data
             _save_payment_data(dialog_manager, payment_data)
-            await dialog_manager.switch_to(state=Subscription.CONFIRM)
+            await _switch_to_confirm_or_email(dialog_manager)
             return
 
     dialog_manager.dialog_data.pop(CURRENT_METHOD_KEY, None)
@@ -409,7 +443,7 @@ async def on_payment_method_select(
     if cache_key in cache:
         logger.info(f"{user.log} Re-selected same method and duration")
         _save_payment_data(dialog_manager, cache[cache_key])
-        await dialog_manager.switch_to(state=Subscription.CONFIRM)
+        await _switch_to_confirm_or_email(dialog_manager)
         return
 
     logger.info(f"{user.log} New combination. Creating new payment")
@@ -439,7 +473,7 @@ async def on_payment_method_select(
         cache[cache_key] = payment_data
         _save_payment_data(dialog_manager, payment_data)
 
-    await dialog_manager.switch_to(state=Subscription.CONFIRM)
+    await _switch_to_confirm_or_email(dialog_manager)
 
 
 @inject

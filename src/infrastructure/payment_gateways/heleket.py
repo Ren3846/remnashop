@@ -1,3 +1,5 @@
+from typing import Optional
+
 from aiogram import Bot
 
 from src.application.dto import PaymentGatewayDto

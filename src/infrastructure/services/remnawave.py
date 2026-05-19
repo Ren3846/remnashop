@@ -221,6 +221,7 @@ class RemnawaveImpl(Remnawave):
                 uuid=subscription.user_remna_id,
                 username=user.remna_name,
                 telegram_id=user.telegram_id,
+                email=user.email,
                 expire_at=subscription.expire_at,
                 traffic_limit_strategy=subscription.traffic_limit_strategy,
                 traffic_limit_bytes=gb_to_bytes(subscription.traffic_limit),
@@ -235,6 +236,7 @@ class RemnawaveImpl(Remnawave):
             return CreateUserRequestDto(
                 username=user.remna_name,
                 telegram_id=user.telegram_id,
+                email=user.email,
                 expire_at=days_to_datetime(plan.duration),
                 traffic_limit_strategy=plan.traffic_limit_strategy,
                 traffic_limit_bytes=gb_to_bytes(plan.traffic_limit),
@@ -258,6 +260,7 @@ class RemnawaveImpl(Remnawave):
             return UpdateUserRequestDto(
                 uuid=uuid,
                 telegram_id=user.telegram_id,
+                email=user.email,
                 expire_at=subscription.expire_at,
                 status=(
                     SubscriptionStatus.DISABLED
@@ -277,6 +280,7 @@ class RemnawaveImpl(Remnawave):
             return UpdateUserRequestDto(
                 uuid=uuid,
                 telegram_id=user.telegram_id,
+                email=user.email,
                 expire_at=days_to_datetime(plan.duration),
                 status=SubscriptionStatus.ACTIVE,
                 traffic_limit_strategy=plan.traffic_limit_strategy,

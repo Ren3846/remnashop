@@ -1,5 +1,6 @@
 from aiogram.enums import ButtonStyle
 from aiogram_dialog import Dialog, Window
+from aiogram_dialog.widgets.input import MessageInput
 from aiogram_dialog.widgets.kbd import Button, Column, Group, Row, Select, SwitchTo, Url
 from aiogram_dialog.widgets.style import Style
 from aiogram_dialog.widgets.text import Format
@@ -23,6 +24,7 @@ from .getters import (
 )
 from .handlers import (
     on_duration_select,
+    on_email_input,
     on_get_subscription,
     on_open_connect_guide_start,
     on_payment_method_select,
@@ -191,6 +193,15 @@ payment_method = Window(
     getter=payment_method_getter,
 )
 
+email_input = Window(
+    Banner(BannerName.SUBSCRIPTION),
+    I18nFormat("msg-subscription-email"),
+    MessageInput(func=on_email_input),
+    *back_main_menu_button,
+    IgnoreUpdate(),
+    state=Subscription.EMAIL,
+)
+
 confirm = Window(
     Banner(BannerName.SUBSCRIPTION),
     I18nFormat("msg-subscription-confirm"),
@@ -293,6 +304,7 @@ router = Dialog(
     plans,
     duration,
     payment_method,
+    email_input,
     confirm,
     success_payment,
     success_trial,

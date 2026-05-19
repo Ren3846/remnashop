@@ -25,6 +25,7 @@ class Subscription(StatesGroup):
     PLANS = State()
     DURATION = State()
     PAYMENT_METHOD = State()
+    EMAIL = State()
     CONFIRM = State()
     SUCCESS = State()
     FAILED = State()

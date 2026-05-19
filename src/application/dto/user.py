@@ -35,6 +35,7 @@ class UserDto(BaseDto, TrackableMixin, TimestampMixin):
 
     username: Optional[str] = None
     referral_code: str = ""
+    email: Optional[str] = None
 
     name: str
     role: Role = Role.USER

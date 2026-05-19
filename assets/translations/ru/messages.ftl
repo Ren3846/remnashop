@@ -1164,6 +1164,11 @@ msg-subscription-payment-method =
 
     { msg-subscription-details }
 
+msg-subscription-email =
+    <b>📧 Укажите email</b>
+
+    Введите ваш email-адрес. Он будет использован для выставления счёта и привязан к вашей подписке.
+
 msg-subscription-confirm =
     <b>🛒 Подтверждение { $purchase_type ->
     [RENEW] продления

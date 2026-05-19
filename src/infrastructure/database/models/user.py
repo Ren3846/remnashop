@@ -31,6 +31,8 @@ class User(BaseSql, TimestampMixin):
     is_rules_accepted: Mapped[bool]
     is_trial_available: Mapped[bool]
 
+    email: Mapped[Optional[str]] = mapped_column(String(254))
+
     current_subscription_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey(
             "subscriptions.id",

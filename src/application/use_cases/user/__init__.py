@@ -6,6 +6,8 @@ from .commands.blocking import SetBotBlockedStatus, ToggleUserBlockedStatus, Unb
 from .commands.messaging import SendMessageToUser
 from .commands.profile_edit import (
     ChangeUserPoints,
+    SetUserEmail,
+    SetUserEmailDto,
     SetUserPersonalDiscount,
     SetUserPurchaseDiscount,
     ToggleUserTrialAvailable,
@@ -29,6 +31,7 @@ USER_USE_CASES: Final[tuple[type[Interactor], ...]] = (
     GetUserProfileSubscription,
     GetUserDevices,
     GetAvailablePlans,
+    SetUserEmail,
     SetUserPersonalDiscount,
     SetUserPurchaseDiscount,
     ToggleUserTrialAvailable,

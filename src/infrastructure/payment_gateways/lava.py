@@ -41,12 +41,12 @@ class LavaGateway(BasePaymentGateway):
             headers={"X-Api-Key": api_key, "Content-Type": "application/json"},
         )
 
-    async def handle_create_payment(self, amount: Decimal, details: str) -> PaymentResultDto:
+    async def handle_create_payment(self, amount: Decimal, details: str, email: Optional[str] = None) -> PaymentResultDto:
         settings: LavaGatewaySettingsDto = self.data.settings  # type: ignore[assignment]
 
         payload = {
             "offerId": settings.offer_id,
-            "email": "noreply@example.com",
+            "email": email or "noreply@example.com",
             "currency": "RUB",
             "periodicity": "MONTHLY",
             "buyerLanguage": "RU",
@@ -118,7 +118,7 @@ class LavaGateway(BasePaymentGateway):
             return False
 
         secret = settings.webhook_secret.get_secret_value()  # type: ignore[union-attr]
-        expected = hashlib.sha256(raw_body + secret.encode()).hexdigest()
+        expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
 
         if not hmac.compare_digest(expected, signature):
             logger.warning("Invalid Lava.top webhook signature")

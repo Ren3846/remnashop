@@ -10,6 +10,32 @@ from src.application.dto import UserDto
 
 
 @dataclass(frozen=True)
+class SetUserEmailDto:
+    telegram_id: int
+    email: str
+
+
+class SetUserEmail(Interactor[SetUserEmailDto, None]):
+    required_permission = Permission.PUBLIC
+
+    def __init__(self, uow: UnitOfWork, user_dao: UserDao):
+        self.uow = uow
+        self.user_dao = user_dao
+
+    async def _execute(self, actor: UserDto, data: SetUserEmailDto) -> None:
+        async with self.uow:
+            user = await self.user_dao.get_by_telegram_id(data.telegram_id)
+            if not user:
+                raise ValueError(f"User '{data.telegram_id}' not found")
+
+            user.email = data.email
+            await self.user_dao.update(user)
+            await self.uow.commit()
+
+        logger.info(f"{actor.log} Email set to '{data.email}'")
+
+
+@dataclass(frozen=True)
 class SetUserPersonalDiscountDto:
     telegram_id: int
     discount: int
