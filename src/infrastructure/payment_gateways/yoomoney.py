@@ -1,7 +1,7 @@
 import hashlib
 import uuid
 from decimal import Decimal
-from typing import Any, Final
+from typing import Any, Final, Optional
 from urllib.parse import parse_qs
 from uuid import UUID
 

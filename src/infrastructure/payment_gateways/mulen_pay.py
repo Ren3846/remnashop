@@ -2,7 +2,7 @@ import hashlib
 import uuid
 from decimal import Decimal
 from hmac import compare_digest
-from typing import Any, Final
+from typing import Any, Final, Optional
 from uuid import UUID
 
 import orjson

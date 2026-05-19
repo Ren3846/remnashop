@@ -3,7 +3,7 @@ import hmac
 import time
 import uuid
 from decimal import Decimal
-from typing import Any, Final
+from typing import Any, Final, Optional
 from uuid import UUID
 
 import orjson

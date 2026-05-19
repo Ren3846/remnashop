@@ -2,7 +2,7 @@ import hashlib
 import uuid
 from decimal import Decimal
 from hmac import compare_digest
-from typing import Any, Final
+from typing import Any, Final, Optional
 from urllib.parse import parse_qs, urlencode
 from uuid import UUID
 

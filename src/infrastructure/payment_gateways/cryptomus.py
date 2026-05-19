@@ -4,7 +4,7 @@ import json
 import uuid
 from decimal import Decimal
 from hmac import compare_digest
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 import orjson

@@ -1,5 +1,6 @@
 import uuid
 from decimal import Decimal
+from typing import Optional
 from uuid import UUID
 
 from aiogram.types import LabeledPrice

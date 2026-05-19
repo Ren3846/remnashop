@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 from decimal import Decimal
-from typing import Final
+from typing import Final, Optional
 from uuid import UUID
 
 import orjson
