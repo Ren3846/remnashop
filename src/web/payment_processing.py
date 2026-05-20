@@ -8,6 +8,7 @@ from loguru import logger
 
 from src.application.common import EventPublisher
 from src.application.events import ErrorEvent
+from src.application.services.landing_payment import LandingPaymentService
 from src.application.use_cases.gateways.commands.payment import ProcessPayment, ProcessPaymentDto
 from src.core.config import AppConfig
 from src.core.enums import TransactionStatus
@@ -45,6 +46,12 @@ async def _process_payment(
 
     try:
         async with container(request_context, scope=Scope.REQUEST) as request_container:
+            if payment_status == TransactionStatus.COMPLETED:
+                landing_payment = await request_container.get(LandingPaymentService)
+                if await landing_payment.try_fulfill(payment_id):
+                    logger.info(f"Landing payment '{payment_id}' fulfilled")
+                    return
+
             process_payment = await request_container.get(ProcessPayment)
             await process_payment.system(ProcessPaymentDto(payment_id, payment_status))
     except Exception as e:

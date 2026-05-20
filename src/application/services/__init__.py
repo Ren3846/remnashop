@@ -1,5 +1,6 @@
 from .bot import BotService
 from .command import CommandService
+from .landing_payment import LandingPaymentService
 from .notification import NotificationService
 from .pricing import PricingService
 from .remnawave import RemnaWebhookService

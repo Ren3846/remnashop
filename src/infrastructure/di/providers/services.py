@@ -11,6 +11,7 @@ from src.application.common import (
 from src.application.services import (
     BotService,
     CommandService,
+    LandingPaymentService,
     NotificationService,
     PricingService,
     RemnaWebhookService,
@@ -29,6 +30,7 @@ class ServicesProvider(Provider):
     scope = Scope.APP
 
     bot = provide(source=BotService)
+    landing_payment = provide(source=LandingPaymentService, scope=Scope.REQUEST)
     cryptographer = provide(source=CryptographerImpl, provides=Cryptographer)
     redirect = provide(source=RedirectImpl, provides=Redirect)
     pricing = provide(source=PricingService)
