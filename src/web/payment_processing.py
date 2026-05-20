@@ -1,7 +1,9 @@
 import asyncio
+from typing import Any
 from uuid import UUID
 
 from dishka import AsyncContainer, Scope
+from dishka.integrations.aiogram import AiogramMiddlewareData
 from loguru import logger
 
 from src.application.common import EventPublisher
@@ -11,6 +13,11 @@ from src.core.config import AppConfig
 from src.core.enums import TransactionStatus
 
 _payment_tasks: set[asyncio.Task[None]] = set()
+
+
+def _background_request_context() -> dict[Any, Any]:
+    # AiogramMiddlewareData is required by I18nAiogramProvider outside telegram updates.
+    return {AiogramMiddlewareData: {}}
 
 
 async def schedule_payment_processing(
@@ -34,14 +41,16 @@ async def _process_payment(
     payment_id: UUID,
     payment_status: TransactionStatus,
 ) -> None:
+    request_context = _background_request_context()
+
     try:
-        async with container(scope=Scope.REQUEST) as request_container:
+        async with container(request_context, scope=Scope.REQUEST) as request_container:
             process_payment = await request_container.get(ProcessPayment)
             await process_payment.system(ProcessPaymentDto(payment_id, payment_status))
     except Exception as e:
         logger.exception(f"Failed to process payment '{payment_id}' in background")
         try:
-            async with container(scope=Scope.REQUEST) as request_container:
+            async with container(request_context, scope=Scope.REQUEST) as request_container:
                 event_publisher = await request_container.get(EventPublisher)
                 await event_publisher.publish(ErrorEvent(**config.build.data, exception=e))
         except Exception as publish_error:
