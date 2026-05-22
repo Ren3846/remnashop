@@ -257,6 +257,13 @@ btn-remnashop =
     .notifications = 🔔 Уведомления
     .logs = 📄 Логи
     .menu-editor = 🎛 Доп. кнопки
+    .sites = 🌍 Сайты и поддомены
+
+btn-sites =
+    .add-site = ➕ Добавить сайт
+    .add-subdomain = ➕ Добавить поддомен
+    .add-keyword = ➕ Добавить ключевое слово
+    .toggle-active = 🔁 Вкл/выкл
 
 btn-menu-editor =
     .text = 🏷️ Текст

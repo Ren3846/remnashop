@@ -9,6 +9,7 @@ from src.application.use_cases.plan import PLAN_USE_CASES
 from src.application.use_cases.referral import REFERRAL_USE_CASES
 from src.application.use_cases.remnawave import REMNAWAVE_USE_CASES
 from src.application.use_cases.settings import SETTINGS_USE_CASES
+from src.application.use_cases.site import SITE_USE_CASES
 from src.application.use_cases.statistics import STATISTICS_USE_CASES
 from src.application.use_cases.subscription import SUBSCRIPTION_USE_CASES
 from src.application.use_cases.user import USER_USE_CASES
@@ -27,6 +28,7 @@ class UseCasesProvider(Provider):
         *REFERRAL_USE_CASES,
         *REMNAWAVE_USE_CASES,
         *SETTINGS_USE_CASES,
+        *SITE_USE_CASES,
         *SUBSCRIPTION_USE_CASES,
         *USER_USE_CASES,
         *STATISTICS_USE_CASES,

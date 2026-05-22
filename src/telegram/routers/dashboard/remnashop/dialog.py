@@ -15,6 +15,7 @@ from src.telegram.states import (
     RemnashopNotifications,
     RemnashopPlans,
     RemnashopReferral,
+    RemnashopSites,
 )
 from src.telegram.utils import require_permission
 from src.telegram.widgets import Banner, I18nFormat, IgnoreUpdate
@@ -31,6 +32,14 @@ remnashop = Window(
             id="admins",
             state=DashboardRemnashop.ADMINS,
             when=require_permission(Permission.VIEW_ADMINS),
+        ),
+    ),
+    Row(
+        Start(
+            text=I18nFormat("btn-remnashop.sites"),
+            id="sites",
+            state=RemnashopSites.MAIN,
+            when=require_permission(Permission.VIEW_SITES),
         ),
     ),
     Row(

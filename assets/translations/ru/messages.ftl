@@ -853,6 +853,44 @@ msg-gateways-field =
     Введите новое значение для { $field }.
 
 
+# Sites
+msg-sites-main =
+    <b>🌍 Сайты и поддомены</b>
+
+    Управление базовыми доменами, поддоменами и SEO-ключевыми словами.
+
+msg-sites-site =
+    <b>🌍 Сайт</b>
+
+    Выберите поддомен или добавьте новый.
+
+msg-sites-subdomain =
+    <b>🔗 Поддомен</b>
+
+    Ключевые слова для SEO. Нажмите на слово, чтобы включить или выключить.
+
+msg-sites-site-name =
+    <b>➕ Новый сайт</b>
+
+    Введите название проекта (например: Vojens Gokart).
+
+msg-sites-site-domain =
+    <b>➕ Базовый домен</b>
+
+    Введите домен без https (например: vojens-gokart.dk).
+
+msg-sites-subdomain-host =
+    <b>➕ Поддомен</b>
+
+    Введите префикс или полный хост
+    (например: casino-uden-mitid или casino-uden-mitid.vojens-gokart.dk).
+
+msg-sites-keyword =
+    <b>➕ Ключевое слово</b>
+
+    Введите SEO-фразу (например: casino uden mitid).
+
+
 # Referral
 msg-referral-main =
     <b>👥 Реферальная система</b>

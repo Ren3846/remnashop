@@ -3,6 +3,7 @@ from .payment_gateway import PaymentGatewayDao
 from .plan import PlanDao
 from .referral import ReferralDao
 from .settings import SettingsDao
+from .site import SiteDao
 from .subscription import SubscriptionDao
 from .transaction import TransactionDao
 from .user import UserDao
@@ -15,6 +16,7 @@ __all__ = [
     "PlanDao",
     "ReferralDao",
     "SettingsDao",
+    "SiteDao",
     "SubscriptionDao",
     "TransactionDao",
     "UserDao",

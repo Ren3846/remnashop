@@ -6,6 +6,7 @@ from src.application.common.dao import (
     PlanDao,
     ReferralDao,
     SettingsDao,
+    SiteDao,
     SubscriptionDao,
     TransactionDao,
     UserDao,
@@ -18,6 +19,7 @@ from src.infrastructure.database.dao import (
     PlanDaoImpl,
     ReferralDaoImpl,
     SettingsDaoImpl,
+    SiteDaoImpl,
     SubscriptionDaoImpl,
     TransactionDaoImpl,
     UserDaoImpl,
@@ -34,6 +36,7 @@ class DaoProvider(Provider):
     plan = provide(source=PlanDaoImpl, provides=PlanDao)
     referral = provide(source=ReferralDaoImpl, provides=ReferralDao)
     settings = provide(source=SettingsDaoImpl, provides=SettingsDao)
+    site = provide(source=SiteDaoImpl, provides=SiteDao)
     subscription = provide(source=SubscriptionDaoImpl, provides=SubscriptionDao)
     transaction = provide(source=TransactionDaoImpl, provides=TransactionDao)
     user = provide(source=UserDaoImpl, provides=UserDao)

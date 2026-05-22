@@ -169,6 +169,16 @@ class RemnashopMenuEditor(StatesGroup):
     PAYLOAD = State()
 
 
+class RemnashopSites(StatesGroup):
+    MAIN = State()
+    SITE = State()
+    SUBDOMAIN = State()
+    SITE_NAME = State()
+    SITE_DOMAIN = State()
+    SUBDOMAIN_HOST = State()
+    KEYWORD = State()
+
+
 class DashboardRemnawave(StatesGroup):
     MAIN = State()
     USERS = State()
