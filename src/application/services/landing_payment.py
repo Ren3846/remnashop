@@ -5,7 +5,7 @@ from uuid import UUID
 
 import orjson
 from adaptix import Retort
-from httpx import AsyncClient
+from httpx import AsyncClient, HTTPStatusError
 from loguru import logger
 from redis.asyncio import Redis
 from remnapy import RemnawaveSDK
@@ -49,7 +49,7 @@ class LandingPaymentService:
         email: str,
         days: int,
         offer_id: Optional[str] = None,
-        periodicity: str = "ONE_TIME",
+        periodicity: str = "MONTHLY",
     ) -> dict[str, Any]:
         gateway = await self.payment_gateway_dao.get_by_type(PaymentGatewayType.LAVA)
         if not gateway or not gateway.is_active or not isinstance(
@@ -76,8 +76,19 @@ class LandingPaymentService:
             headers={"X-Api-Key": api_key, "Content-Type": "application/json"},
             timeout=15,
         ) as client:
-            response = await client.post("/api/v2/invoice", content=orjson.dumps(payload))
-            response.raise_for_status()
+            try:
+                response = await client.post("/api/v2/invoice", content=orjson.dumps(payload))
+                if response.status_code >= 400:
+                    logger.error(
+                        f"Lava.top API error {response.status_code} for landing payment: "
+                        f"{response.text}"
+                    )
+                response.raise_for_status()
+            except HTTPStatusError as e:
+                raise RuntimeError(
+                    f"Lava payment failed ({e.response.status_code}): {e.response.text}"
+                ) from e
+
             data = orjson.loads(response.content)
 
         payment_id = data["id"]
