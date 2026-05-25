@@ -80,6 +80,18 @@ class GetOrCreateUser(Interactor[GetOrCreateUserDto, Optional[UserDto]]):
                 data, referral_code=new_referral_code, is_blocked=is_blocked
             )
             user = await self.user_dao.create(user_dto)
+
+            if is_owner:
+                old_owners = await self.user_dao.filter_by_role([Role.OWNER])
+                for old_owner in old_owners:
+                    if old_owner.id != user.id:
+                        old_owner.role = Role.DEV
+                        await self.user_dao.update(old_owner)
+                        logger.info(
+                            f"Owner role revoked from '{old_owner.remna_name}' "
+                            f"due to BOT_OWNER_ID change"
+                        )
+
             await self.uow.commit()
 
         if is_blocked:
