@@ -1,5 +1,6 @@
 from typing import Optional, cast
 
+from adaptix import Retort
 from loguru import logger
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +13,7 @@ from .base import BaseDaoImpl
 
 
 class SiteDaoImpl(SiteDao, BaseDaoImpl):
-    def __init__(self, session: AsyncSession, retort) -> None:
+    def __init__(self, session: AsyncSession, retort: Retort) -> None:
         super().__init__(session, retort)
 
     @staticmethod
