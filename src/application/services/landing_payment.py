@@ -63,11 +63,18 @@ class LandingPaymentService:
 
         plan_snapshot = await self._resolve_plan_snapshot(days)
 
+        # Lava subscription offers require MONTHLY (same as bot payment gateway).
+        if periodicity != "MONTHLY":
+            logger.warning(
+                f"Landing payment requested periodicity={periodicity!r}, forcing MONTHLY for Lava"
+            )
+        lava_periodicity = "MONTHLY"
+
         payload = {
             "offerId": resolved_offer_id,
             "email": email,
             "currency": "RUB",
-            "periodicity": periodicity,
+            "periodicity": lava_periodicity,
             "buyerLanguage": "RU",
         }
 
@@ -103,7 +110,7 @@ class LandingPaymentService:
                     "email": email,
                     "days": days,
                     "offer_id": resolved_offer_id,
-                    "periodicity": periodicity,
+                    "periodicity": lava_periodicity,
                     "plan_snapshot": self.retort.dump(plan_snapshot),
                 }
             ),
