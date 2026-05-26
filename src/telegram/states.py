@@ -125,10 +125,10 @@ class RemnashopBackup(StatesGroup):
 
 class RemnashopExtra(StatesGroup):
     MAIN = State()
-    DEVICE_SINGLE_CD = State()
-    DEVICE_ALL_CD = State()
-    LINK_CD = State()
-    REFERRAL_CD = State()
+    DEVICE_SINGLE = State()
+    DEVICE_ALL = State()
+    LINK_RESET = State()
+    REFERRAL_RESET = State()
 
 
 class RemnashopReferral(StatesGroup):

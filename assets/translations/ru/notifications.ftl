@@ -18,7 +18,7 @@ ntf-common =
 
     .invalid-value = ❌ <i>Некорректное значение.</i>
     .value-updated = ✅ <i>Параметр успешно обновлен.</i>
-    .cooldown-active = ⏳ <i>Функция временно недоступна. Попробуйте снова после { $available_at }.</i>
+    .cooldown-active = ⏳ <i>Временно недоступно. Попробуйте снова через { $available_at }.</i>
 
     .plan-not-found = ❌ <i>План не найден или недоступен.</i>
     .connect-not-available =
@@ -162,8 +162,8 @@ ntf-devices =
     .reissued = ✅ <i>Подписка успешно перевыпущена.</i>
 
 ntf-backup =
-    .assets-started = ⏳ <i>Создаю бэкап ассетов...</i>
-    .db-started = ⏳ <i>Создаю бэкап базы данных...</i>
+    .assets-started = ⏳ <i>Создание бэкапа ассетов...</i>
+    .db-started = ⏳ <i>Создание бэкапа базы данных...</i>
     .error = ❌ <i>Ошибка при создании бэкапа</i>
 
 ntf-blacklist =

@@ -294,27 +294,30 @@ btn-remnashop-transaction = { $status ->
     *[OTHER] { $status }
     } #{ $user_id } · { gateway-type } · { $created_at }
 
-btn-extra =
-    .device-single-toggle = { $device_single_enabled ->
+btn-remnashop-extra =
+    .device-single = { $enabled -> 
         [1] ✅
         *[0] ❌
-    } Удал. одного
-    .device-single-cd = ⏱ КД одного
-    .device-all-toggle = { $device_all_enabled ->
+    } Удаление устройства
+
+    .device-all = { $enabled -> 
         [1] ✅
         *[0] ❌
-    } Удал. всех
-    .device-all-cd = ⏱ КД всех
-    .link-toggle = { $link_reset_enabled ->
+    } Удаление всех устройств
+
+    .link-reset = { $enabled -> 
         [1] ✅
         *[0] ❌
-    } Сброс ссылки
-    .link-cd = ⏱ КД ссылки
-    .referral-toggle = { $referral_reset_enabled ->
+    } Перевыпуск подписки
+    .referral-reset = { $enabled -> 
         [1] ✅
         *[0] ❌
-    } Сброс реф.
-    .referral-cd = ⏱ КД реф.
+    } Сброс реф. ссылки
+
+    .toggle = { $enabled ->
+        [1] ✅ Включено
+        *[0] ❌ Выключено
+    }
 
 btn-menu-editor =
     .text = 🏷️ Текст

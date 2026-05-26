@@ -87,6 +87,14 @@ class SearchUsers(Interactor[SearchUsersDto, list[UserDto]]):
                 except (IndexError, ValueError):
                     logger.warning(f"Failed to parse Remnashop ID from query '{query}'")
 
+            elif "@" in query:
+                user = await self.user_dao.get_by_email(query)
+                if user:
+                    found_users.append(user)
+                    logger.info(f"Searched by email '{query}', user found")
+                else:
+                    logger.warning(f"Searched by email '{query}', user not found")
+
             else:
                 found_users = await self.user_dao.get_by_partial_name(query)
                 logger.info(

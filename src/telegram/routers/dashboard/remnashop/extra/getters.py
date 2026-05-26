@@ -16,12 +16,12 @@ async def extra_getter(
     settings = await settings_dao.get()
     extra = settings.extra
     return {
-        "device_single_enabled": int(extra.device_single_reset.enabled),
+        "device_single_enabled": extra.device_single_reset.enabled,
         "device_single_cooldown": extra.device_single_reset.cooldown_hours,
-        "device_all_enabled": int(extra.device_all_reset.enabled),
+        "device_all_enabled": extra.device_all_reset.enabled,
         "device_all_cooldown": extra.device_all_reset.cooldown_hours,
-        "link_reset_enabled": int(extra.link_reset.enabled),
+        "link_reset_enabled": extra.link_reset.enabled,
         "link_reset_cooldown": extra.link_reset.cooldown_hours,
-        "referral_reset_enabled": int(extra.referral_reset.enabled),
+        "referral_reset_enabled": extra.referral_reset.enabled,
         "referral_reset_cooldown": extra.referral_reset.cooldown_hours,
     }

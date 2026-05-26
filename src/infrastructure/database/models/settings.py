@@ -1,5 +1,6 @@
 from typing import Any
 
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.core.enums import Currency
@@ -22,4 +23,4 @@ class Settings(BaseSql, TimestampMixin):
     menu: Mapped[dict[str, Any]]
     backup: Mapped[dict[str, Any]]
     blacklist: Mapped[dict[str, Any]]
-    extra: Mapped[dict[str, Any]]
+    extra: Mapped[dict[str, Any]] = mapped_column(JSONB)

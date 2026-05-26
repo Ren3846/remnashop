@@ -1,5 +1,6 @@
 from aiogram_dialog import Dialog, StartMode, Window
 from aiogram_dialog.widgets.input import MessageInput
+from magic_filter import F
 
 from src.core.enums import BannerName
 from src.telegram.states import DashboardRemnashop, RemnashopExtra
@@ -7,67 +8,49 @@ from src.telegram.widgets import Banner, I18nFormat, IgnoreUpdate
 from src.telegram.widgets.kbd import Button, Row, Start, SwitchTo
 
 from .getters import extra_getter
-from .handlers import (
-    on_cooldown_input,
-    on_enter_device_all_cd,
-    on_enter_device_single_cd,
-    on_enter_link_cd,
-    on_enter_referral_cd,
-    on_toggle_device_all,
-    on_toggle_device_single,
-    on_toggle_link,
-    on_toggle_referral,
-)
+from .handlers import on_cooldown_input, on_toggle
 
 main = Window(
     Banner(BannerName.DASHBOARD),
     I18nFormat("msg-extra-main"),
     Row(
-        Button(
-            text=I18nFormat("btn-extra.device-single-toggle"),
-            id="device_single_toggle",
-            on_click=on_toggle_device_single,
-        ),
-        Button(
-            text=I18nFormat("btn-extra.device-single-cd"),
-            id="device_single_cd",
-            on_click=on_enter_device_single_cd,
+        SwitchTo(
+            text=I18nFormat(
+                "btn-remnashop-extra.device-single",
+                enabled=F["device_single_enabled"],
+            ),
+            id="device_single",
+            state=RemnashopExtra.DEVICE_SINGLE,
         ),
     ),
     Row(
-        Button(
-            text=I18nFormat("btn-extra.device-all-toggle"),
-            id="device_all_toggle",
-            on_click=on_toggle_device_all,
-        ),
-        Button(
-            text=I18nFormat("btn-extra.device-all-cd"),
-            id="device_all_cd",
-            on_click=on_enter_device_all_cd,
+        SwitchTo(
+            text=I18nFormat(
+                "btn-remnashop-extra.device-all",
+                enabled=F["device_all_enabled"],
+            ),
+            id="device_all",
+            state=RemnashopExtra.DEVICE_ALL,
         ),
     ),
     Row(
-        Button(
-            text=I18nFormat("btn-extra.link-toggle"),
-            id="link_toggle",
-            on_click=on_toggle_link,
-        ),
-        Button(
-            text=I18nFormat("btn-extra.link-cd"),
-            id="link_cd",
-            on_click=on_enter_link_cd,
+        SwitchTo(
+            text=I18nFormat(
+                "btn-remnashop-extra.link-reset",
+                enabled=F["link_reset_enabled"],
+            ),
+            id="link_reset",
+            state=RemnashopExtra.LINK_RESET,
         ),
     ),
     Row(
-        Button(
-            text=I18nFormat("btn-extra.referral-toggle"),
-            id="referral_toggle",
-            on_click=on_toggle_referral,
-        ),
-        Button(
-            text=I18nFormat("btn-extra.referral-cd"),
-            id="referral_cd",
-            on_click=on_enter_referral_cd,
+        SwitchTo(
+            text=I18nFormat(
+                "btn-remnashop-extra.referral-reset",
+                enabled=F["referral_reset_enabled"],
+            ),
+            id="referral_reset",
+            state=RemnashopExtra.REFERRAL_RESET,
         ),
     ),
     Row(
@@ -83,9 +66,20 @@ main = Window(
     getter=extra_getter,
 )
 
-device_single_cd = Window(
+device_single = Window(
     Banner(BannerName.DASHBOARD),
-    I18nFormat("msg-extra-set-cd"),
+    I18nFormat(
+        "msg-extra-device-single",
+        enabled=F["device_single_enabled"],
+        cooldown=F["device_single_cooldown"],
+    ),
+    Row(
+        Button(
+            text=I18nFormat("btn-remnashop-extra.toggle", enabled=F["device_single_enabled"]),
+            id="device_single_toggle",
+            on_click=on_toggle,
+        ),
+    ),
     Row(
         SwitchTo(
             text=I18nFormat("btn-back.general"),
@@ -95,13 +89,24 @@ device_single_cd = Window(
     ),
     MessageInput(func=on_cooldown_input),
     IgnoreUpdate(),
-    state=RemnashopExtra.DEVICE_SINGLE_CD,
+    state=RemnashopExtra.DEVICE_SINGLE,
     getter=extra_getter,
 )
 
-device_all_cd = Window(
+device_all = Window(
     Banner(BannerName.DASHBOARD),
-    I18nFormat("msg-extra-set-cd"),
+    I18nFormat(
+        "msg-extra-device-all",
+        enabled=F["device_all_enabled"],
+        cooldown=F["device_all_cooldown"],
+    ),
+    Row(
+        Button(
+            text=I18nFormat("btn-remnashop-extra.toggle", enabled=F["device_all_enabled"]),
+            id="device_all_toggle",
+            on_click=on_toggle,
+        ),
+    ),
     Row(
         SwitchTo(
             text=I18nFormat("btn-back.general"),
@@ -111,13 +116,24 @@ device_all_cd = Window(
     ),
     MessageInput(func=on_cooldown_input),
     IgnoreUpdate(),
-    state=RemnashopExtra.DEVICE_ALL_CD,
+    state=RemnashopExtra.DEVICE_ALL,
     getter=extra_getter,
 )
 
-link_cd = Window(
+link_reset = Window(
     Banner(BannerName.DASHBOARD),
-    I18nFormat("msg-extra-set-cd"),
+    I18nFormat(
+        "msg-extra-link-reset",
+        enabled=F["link_reset_enabled"],
+        cooldown=F["link_reset_cooldown"],
+    ),
+    Row(
+        Button(
+            text=I18nFormat("btn-remnashop-extra.toggle", enabled=F["link_reset_enabled"]),
+            id="link_toggle",
+            on_click=on_toggle,
+        ),
+    ),
     Row(
         SwitchTo(
             text=I18nFormat("btn-back.general"),
@@ -127,13 +143,24 @@ link_cd = Window(
     ),
     MessageInput(func=on_cooldown_input),
     IgnoreUpdate(),
-    state=RemnashopExtra.LINK_CD,
+    state=RemnashopExtra.LINK_RESET,
     getter=extra_getter,
 )
 
-referral_cd = Window(
+referral_reset = Window(
     Banner(BannerName.DASHBOARD),
-    I18nFormat("msg-extra-set-cd"),
+    I18nFormat(
+        "msg-extra-referral-reset",
+        enabled=F["referral_reset_enabled"],
+        cooldown=F["referral_reset_cooldown"],
+    ),
+    Row(
+        Button(
+            text=I18nFormat("btn-remnashop-extra.toggle", enabled=F["referral_reset_enabled"]),
+            id="referral_toggle",
+            on_click=on_toggle,
+        ),
+    ),
     Row(
         SwitchTo(
             text=I18nFormat("btn-back.general"),
@@ -143,14 +170,14 @@ referral_cd = Window(
     ),
     MessageInput(func=on_cooldown_input),
     IgnoreUpdate(),
-    state=RemnashopExtra.REFERRAL_CD,
+    state=RemnashopExtra.REFERRAL_RESET,
     getter=extra_getter,
 )
 
 router = Dialog(
     main,
-    device_single_cd,
-    device_all_cd,
-    link_cd,
-    referral_cd,
+    device_single,
+    device_all,
+    link_reset,
+    referral_reset,
 )

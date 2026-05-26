@@ -149,12 +149,18 @@ devices = Window(
                 text=Format("{item[label]}"),
                 id="device_item",
                 on_click=on_device_delete_request,
+                when=F["device_single_enabled"],
+            ),
+            Button(
+                text=Format("{item[label]}"),
+                id="device_item_display",
+                when=~F["device_single_enabled"],
             ),
         ),
         id="devices_list",
         item_id_getter=lambda item: item["short_hwid"],
         items="devices",
-        when=F["has_devices"] & F["device_single_enabled"],
+        when=F["has_devices"],
     ),
     Row(
         Start(

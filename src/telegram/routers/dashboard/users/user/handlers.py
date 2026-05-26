@@ -169,8 +169,13 @@ async def on_referral_reset(
 ) -> None:
     user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
     target_user_id = dialog_manager.dialog_data[TARGET_USER_ID]
-    await reset_user_referral_code(user, target_user_id)
-    await notifier.notify_user(user, i18n_key="ntf-user.referral-reset")
+
+    if is_double_click(dialog_manager, key="referral_reset_confirm", cooldown=10):
+        await reset_user_referral_code(user, target_user_id)
+        await notifier.notify_user(user, i18n_key="ntf-user.referral-reset")
+        return
+
+    await notifier.notify_user(user, i18n_key="ntf-common.double-click-confirm")
 
 
 @inject
