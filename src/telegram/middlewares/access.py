@@ -1,6 +1,6 @@
 from typing import Any, Awaitable, Callable, Optional
 
-from aiogram.types import CallbackQuery, Message, TelegramObject
+from aiogram.types import CallbackQuery, TelegramObject
 from aiogram.types import User as AiogramUser
 from aiogram_dialog.utils import remove_intent_id
 from dishka import AsyncContainer
@@ -14,43 +14,10 @@ from src.application.use_cases.referral.queries.code import (
     ValidateReferralCodeDto,
 )
 from src.core.constants import CONTAINER_KEY, PAYMENT_PREFIX
-from src.core.enums import Deeplink, MiddlewareEventType
+from src.core.enums import MiddlewareEventType
 
+from ._codes import parse_ad_link_code, parse_referral_code
 from .base import EventTypedMiddleware
-
-
-def _parse_referral_code(event: TelegramObject) -> Optional[str]:
-    if not isinstance(event, Message) or not event.text:
-        return None
-
-    parts = event.text.split()
-    if len(parts) <= 1:
-        return None
-
-    code = parts[1]
-    if code.startswith(Deeplink.REFERRAL.with_underscore):
-        raw = code[len(Deeplink.REFERRAL.with_underscore) :]
-        logger.debug(f"Parsed referral code '{raw}' from deeplink")
-        return raw
-
-    return None
-
-
-def _parse_ad_link_code(event: TelegramObject) -> Optional[str]:
-    if not isinstance(event, Message) or not event.text:
-        return None
-
-    parts = event.text.split()
-    if len(parts) <= 1:
-        return None
-
-    code = parts[1]
-    if code.startswith(Deeplink.ADVERTISING.with_underscore):
-        raw = code[len(Deeplink.ADVERTISING.with_underscore) :]
-        logger.debug(f"Parsed ad link code '{raw}' from deeplink")
-        return raw
-
-    return None
 
 
 class AccessMiddleware(EventTypedMiddleware):
@@ -71,7 +38,7 @@ class AccessMiddleware(EventTypedMiddleware):
         container: AsyncContainer = data[CONTAINER_KEY]
         check_access = await container.get(CheckAccess)
 
-        raw_referral_code = _parse_referral_code(event)
+        raw_referral_code = parse_referral_code(event)
         is_referral_event = False
         if raw_referral_code:
             validate_referral_code = await container.get(ValidateReferralCode)
@@ -85,7 +52,7 @@ class AccessMiddleware(EventTypedMiddleware):
                 ValidateReferralCodeDto(user_id=0, referral_code=raw_referral_code)
             )
 
-        raw_ad_link_code = _parse_ad_link_code(event)
+        raw_ad_link_code = parse_ad_link_code(event)
         is_ad_link_event = False
         if raw_ad_link_code:
             validate_ad_link = await container.get(ValidateAdLinkCode)

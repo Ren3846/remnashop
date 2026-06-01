@@ -54,16 +54,19 @@ class CheckAccess(Interactor[CheckAccessDto, bool]):
             logger.info(f"Access denied for user '{data.telegram_id}' due to restricted mode")
             return False
 
-        if user:
-            if data.is_payment_event and not settings.access.payments_allowed:
-                await self.notifier.notify_user(
-                    user=data.temp_user, i18n_key="ntf-access.payments-disabled"
-                )
-                logger.info(
-                    f"Access denied for payment event for user '{data.telegram_id}' "
-                    f"because payments are disabled"
-                )
+        if data.is_payment_event and not settings.access.payments_allowed:
+            await self.notifier.notify_user(
+                user=data.temp_user, i18n_key="ntf-access.payments-disabled"
+            )
+            logger.info(
+                f"Access denied for payment event for user '{data.telegram_id}' "
+                f"because payments are disabled"
+            )
+            if user:
                 return await self._manage_waitlist(data.telegram_id)
+            return False
+
+        if user:
             return True
 
         return await self._process_new_user(data, settings)

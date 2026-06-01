@@ -31,6 +31,7 @@ from .handlers import (
     on_plan_select,
     on_preview,
     on_send,
+    on_view_preview,
 )
 
 broadcast = Window(
@@ -141,7 +142,7 @@ view = Window(
         Button(
             I18nFormat("btn-broadcast.preview"),
             id="preview",
-            on_click=on_preview,
+            on_click=on_view_preview,
         ),
     ),
     Row(

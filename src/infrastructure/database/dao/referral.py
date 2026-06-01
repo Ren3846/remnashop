@@ -9,7 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.application.common.dao import ReferralDao
-from src.application.dto import ReferralDto, ReferralRewardDto, ReferralStatisticsDto
+from src.application.dto import (
+    ReferralDto,
+    ReferralRewardDto,
+    ReferralStatisticsDto,
+    UserReferralStatsDto,
+)
 from src.core.enums import ReferralLevel, ReferralRewardType
 from src.infrastructure.database.models import Referral, ReferralReward
 from src.infrastructure.database.models.user import User
@@ -119,35 +124,10 @@ class ReferralDaoImpl(ReferralDao):
         logger.debug(f"Created reward amount '{reward.amount}' for referral ID '{referral_id}'")
         return self._convert_to_reward_dto(db_reward)
 
-    async def get_pending_rewards(self) -> list[ReferralRewardDto]:
-        stmt = select(ReferralReward).where(ReferralReward.is_issued.is_(False))
-        result = await self.session.scalars(stmt)
-        db_rewards = cast(list, result.all())
-
-        logger.debug(f"Retrieved '{len(db_rewards)}' pending rewards")
-        return self._convert_to_reward_list(db_rewards)
-
     async def mark_reward_as_issued(self, reward_id: int) -> None:
         stmt = update(ReferralReward).where(ReferralReward.id == reward_id).values(is_issued=True)
         await self.session.execute(stmt)
         logger.debug(f"Reward '{reward_id}' marked as issued")
-
-    async def get_total_rewards_amount(
-        self,
-        user_id: int,
-        reward_type: ReferralRewardType,
-    ) -> int:
-        stmt = select(func.sum(ReferralReward.amount)).where(
-            ReferralReward.user_id == user_id,
-            ReferralReward.type == reward_type,
-            ReferralReward.is_issued.is_(True),
-        )
-        total = await self.session.scalar(stmt) or 0
-
-        logger.debug(
-            f"Total rewards amount for user_id '{user_id}' with type '{reward_type}' is '{total}'"
-        )
-        return int(total)
 
     async def get_referral_chain(
         self,
@@ -238,7 +218,7 @@ class ReferralDaoImpl(ReferralDao):
             top_referrer_id=top_referrer_row["referrer_id"] if top_referrer_row else None,
         )
 
-    async def get_user_referral_stats(self, user_id: int) -> dict:
+    async def get_user_referral_stats(self, user_id: int) -> UserReferralStatsDto:
         # Referrer info: find the User who referred this user (referred_id = user_id)
         referrer_stmt = (
             select(User.telegram_id, User.email, User.username)
@@ -282,15 +262,15 @@ class ReferralDaoImpl(ReferralDao):
         invited_row = (await self.session.execute(invited_stmt)).mappings().one()
         rewards_row = (await self.session.execute(rewards_stmt)).mappings().one()
 
-        return {
-            "referrer_telegram_id": referrer_row["telegram_id"] if referrer_row else None,
-            "referrer_email": referrer_row["email"] if referrer_row else None,
-            "referrer_username": referrer_row["username"] if referrer_row else None,
-            "referrals_level_1": int(invited_row["level_1"] or 0),
-            "referrals_level_2": int(invited_row["level_2"] or 0),
-            "reward_points": int(rewards_row["reward_points"] or 0),
-            "reward_days": int(rewards_row["reward_days"] or 0),
-        }
+        return UserReferralStatsDto(
+            referrer_telegram_id=referrer_row["telegram_id"] if referrer_row else None,
+            referrer_email=referrer_row["email"] if referrer_row else None,
+            referrer_username=referrer_row["username"] if referrer_row else None,
+            referrals_level_1=int(invited_row["level_1"] or 0),
+            referrals_level_2=int(invited_row["level_2"] or 0),
+            reward_points=int(rewards_row["reward_points"] or 0),
+            reward_days=int(rewards_row["reward_days"] or 0),
+        )
 
     async def get_referrals_with_payment_count(self, user_id: int) -> int:
         stmt = select(func.count(func.distinct(ReferralReward.referral_id))).where(

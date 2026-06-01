@@ -61,50 +61,34 @@ class StartBroadcast(Interactor[StartBroadcastDto, UUID]):
         return task_id
 
 
-@dataclass(frozen=True)
-class DeleteBroadcastResultDto:
-    total: int
-    deleted: int
-    failed: int
-
-
-class DeleteBroadcast(Interactor[UUID, DeleteBroadcastResultDto]):
+class DeleteBroadcast(Interactor[UUID, None]):
     required_permission = Permission.BROADCAST
 
     def __init__(
         self,
-        uow: UnitOfWork,
         broadcast_dao: BroadcastDao,
         broadcast_dispatcher: BroadcastDispatcher,
     ) -> None:
-        self.uow = uow
         self.broadcast_dao = broadcast_dao
         self.broadcast_dispatcher = broadcast_dispatcher
 
-    async def _execute(self, actor: UserDto, data: UUID) -> DeleteBroadcastResultDto:
-        async with self.uow:
-            broadcast = await self.broadcast_dao.get_by_task_id(data)
+    async def _execute(self, actor: UserDto, data: UUID) -> None:
+        broadcast = await self.broadcast_dao.get_by_task_id(data)
 
-            if not broadcast:
-                logger.error(f"{actor.log} Failed to find broadcast '{data}' for deletion")
-                raise ValueError(f"Broadcast '{data}' not found")
+        if not broadcast:
+            logger.error(f"{actor.log} Failed to find broadcast '{data}' for deletion")
+            raise ValueError(f"Broadcast '{data}' not found")
 
-            if broadcast.status == BroadcastStatus.DELETED:
-                logger.warning(f"{actor.log} Broadcast '{data}' is already deleted")
-                raise ValueError("Broadcast already deleted")
+        if broadcast.status == BroadcastStatus.DELETED:
+            logger.warning(f"{actor.log} Broadcast '{data}' is already deleted")
+            raise ValueError("Broadcast already deleted")
 
-            await self.broadcast_dao.update_status(data, BroadcastStatus.DELETED)
-            await self.uow.commit()
+        # Deletion runs in the background; the task sets DELETED on completion. Do NOT
+        # mark DELETED here — a failed/timed-out task must stay retryable and must not
+        # falsely claim the Telegram messages were removed.
+        await self.broadcast_dispatcher.delete(broadcast)
 
-        logger.info(f"{actor.log} Initiated deletion for broadcast '{data}'")
-
-        counts = await self.broadcast_dispatcher.delete(broadcast)
-
-        logger.info(
-            f"{actor.log} Finished deletion for '{data}' "
-            f"(total: '{counts[0]}', deleted: '{counts[1]}', failed: '{counts[2]}')"
-        )
-        return DeleteBroadcastResultDto(total=counts[0], deleted=counts[1], failed=counts[2])
+        logger.info(f"{actor.log} Scheduled background deletion for broadcast '{data}'")
 
 
 class CancelBroadcast(Interactor[UUID, None]):

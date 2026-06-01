@@ -8,7 +8,7 @@ from src.application.common import Interactor
 from src.application.common.dao import TransactionDao, UserDao
 from src.application.common.policy import Permission
 from src.application.dto import TransactionDto, UserDto
-from src.core.constants import REMNASHOP_PREFIX
+from src.core.constants import REMNASHOP_PREFIX, WEB_PREFIX
 
 
 @dataclass(frozen=True)
@@ -76,15 +76,24 @@ class SearchUsers(Interactor[SearchUsersDto, list[UserDto]]):
                     logger.warning(f"Searched by Telegram ID '{telegram_id}', user not found")
 
             elif query.startswith(REMNASHOP_PREFIX):
+                remainder = query[len(REMNASHOP_PREFIX) :]
                 try:
-                    telegram_id = int(query.split("_", maxsplit=1)[1])
-                    user = await self.user_dao.get_by_telegram_id(telegram_id)
+                    if remainder.startswith(WEB_PREFIX):
+                        # Web-only user: remna_name is rs_web_{local_id}.
+                        user_id = int(remainder[len(WEB_PREFIX) :])
+                        user = await self.user_dao.get_by_id(user_id)
+                        log_target = f"web id '{user_id}'"
+                    else:
+                        telegram_id = int(remainder)
+                        user = await self.user_dao.get_by_telegram_id(telegram_id)
+                        log_target = f"telegram id '{telegram_id}'"
+
                     if user:
                         found_users.append(user)
-                        logger.info(f"Searched by Remnashop ID '{telegram_id}', user found")
+                        logger.info(f"Searched by Remnashop {log_target}, user found")
                     else:
-                        logger.warning(f"Searched by Remnashop ID '{telegram_id}', user not found")
-                except (IndexError, ValueError):
+                        logger.warning(f"Searched by Remnashop {log_target}, user not found")
+                except ValueError:
                     logger.warning(f"Failed to parse Remnashop ID from query '{query}'")
 
             elif "@" in query:

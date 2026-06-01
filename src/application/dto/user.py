@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
 from typing import Optional, Self
 
@@ -111,3 +111,12 @@ class UserOAuthProviderDto(BaseDto):
 @dataclass(kw_only=True)
 class TelegramUserDto(UserDto):
     telegram_id: int
+
+    @classmethod
+    def from_user(cls, user: UserDto) -> "TelegramUserDto":
+        # TelegramUserDto only narrows telegram_id; it shares every UserDto field. Copy all
+        # public dataclass fields so the mapping stays correct automatically when fields
+        # change. Centralized here (instead of inline in the middleware) for one tested home.
+        return cls(
+            **{f.name: getattr(user, f.name) for f in fields(user) if not f.name.startswith("_")}
+        )

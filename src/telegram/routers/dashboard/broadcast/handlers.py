@@ -25,6 +25,7 @@ from src.application.use_cases.broadcast.commands.lifecycle import (
 from src.application.use_cases.broadcast.queries.audience import (
     GetBroadcastAudienceCount,
     GetBroadcastAudienceCountDto,
+    HasAvailableBroadcastPlans,
 )
 from src.core.constants import TEXT_MAX_LENGTH, TEXT_MEDIA_MAX_LENGTH, USER_KEY
 from src.core.enums import BroadcastAudience, MediaType
@@ -91,6 +92,7 @@ async def on_audience_select(
     dialog_manager: DialogManager,
     notifier: FromDishka[Notifier],
     get_broadcast_audience_count: FromDishka[GetBroadcastAudienceCount],
+    has_available_plans: FromDishka[HasAvailableBroadcastPlans],
 ) -> None:
     user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
 
@@ -100,16 +102,17 @@ async def on_audience_select(
     audience = BroadcastAudience(remove_intent_id(callback.data)[-1])
     dialog_manager.dialog_data["audience_type"] = audience
 
-    audience_count = await get_broadcast_audience_count(
-        user, GetBroadcastAudienceCountDto(audience)
-    )
     if audience == BroadcastAudience.PLAN:
-        if audience_count == 0:
+        # The audience size is per-plan; here we only gate on plan availability.
+        if not await has_available_plans(user):
             await notifier.notify_user(user, i18n_key="ntf-broadcast.plans-unavailable")
             return
         await dialog_manager.switch_to(state=DashboardBroadcast.PLAN)
         return
 
+    audience_count = await get_broadcast_audience_count(
+        user, GetBroadcastAudienceCountDto(audience)
+    )
     if audience_count == 0:
         await notifier.notify_user(user, i18n_key="ntf-broadcast.audience-unavailable")
         return
@@ -263,6 +266,25 @@ async def on_preview(
 
 
 @inject
+async def on_view_preview(
+    callback: CallbackQuery,
+    widget: Button,
+    dialog_manager: DialogManager,
+    broadcast_dao: FromDishka[BroadcastDao],
+    notifier: FromDishka[Notifier],
+) -> None:
+    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
+    task_id = dialog_manager.dialog_data.get("task_id")
+    broadcast = await broadcast_dao.get_by_task_id(task_id) if task_id else None
+
+    if not broadcast or not broadcast.payload:
+        await notifier.notify_user(user, i18n_key="ntf-broadcast.content-empty")
+        return
+
+    await notifier.notify_user(user, payload=broadcast.payload)
+
+
+@inject
 async def on_send(
     callback: CallbackQuery,
     widget: Button,
@@ -325,22 +347,9 @@ async def on_delete(
     task_id = dialog_manager.dialog_data["task_id"]
 
     try:
+        # Deletion runs in the background; respond immediately. The task reports the
+        # result summary to admins on completion (see delete_broadcast_task).
+        await delete_broadcast(user, task_id)
         await notifier.notify_user(user, i18n_key="ntf-broadcast.deleting")
-
-        result = await delete_broadcast(user, task_id)
-
-        await notifier.notify_user(
-            user=user,
-            payload=MessagePayloadDto(
-                i18n_key="ntf-broadcast.deleted-success",
-                i18n_kwargs={
-                    "task_id": task_id,
-                    "total_count": result.total,
-                    "deleted_count": result.deleted,
-                    "failed_count": result.failed,
-                },
-                disable_default_markup=False,
-            ),
-        )
     except ValueError:
         await notifier.notify_user(user, i18n_key="ntf-broadcast.already-deleted")

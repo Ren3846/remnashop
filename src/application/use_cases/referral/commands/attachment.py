@@ -36,6 +36,10 @@ class AttachReferral(Interactor[AttachReferralDto, Optional[UserDto]]):
 
     async def _execute(self, actor: UserDto, data: AttachReferralDto) -> Optional[UserDto]:
         settings = await self.settings_dao.get()
+        if not settings.referral.enable:
+            logger.info("Referral skipped: referral system is disabled")
+            return None
+
         referrer = await self.user_dao.get_by_referral_code(data.referral_code)
 
         if not referrer:
@@ -76,10 +80,7 @@ class AttachReferral(Interactor[AttachReferralDto, Optional[UserDto]]):
             )
             await self.uow.commit()
 
-        if settings.referral.enable:
-            await self.event_publisher.publish(
-                ReferralAttachedEvent(user=referrer, name=referred.name)
-            )
+        await self.event_publisher.publish(ReferralAttachedEvent(user=referrer, name=referred.name))
 
         return referrer
 

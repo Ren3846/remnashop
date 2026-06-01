@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any, Optional, Union
 from uuid import UUID
 
@@ -23,6 +22,10 @@ from src.application.dto import (
     SubscriptionDto,
     TelegramUserDto,
 )
+from src.application.use_cases.remnawave.queries.squads import (
+    GetExternalSquads,
+    GetInternalSquads,
+)
 from src.application.use_cases.statistics.queries.users import GetUserStatistics
 from src.application.use_cases.user.queries.plans import GetAvailablePlans
 from src.application.use_cases.user.queries.profile import (
@@ -35,6 +38,7 @@ from src.core.constants import (
     FROM_REFERRAL_USER_ID,
     TARGET_TELEGRAM_ID,
     TARGET_USER_ID,
+    USER_KEY,
 )
 from src.core.enums import PlanAvailability, Role
 from src.core.types import RemnaUserDto
@@ -238,7 +242,8 @@ async def squads_getter(
     dialog_manager: DialogManager,
     user_dao: FromDishka[UserDao],
     subscription_dao: FromDishka[SubscriptionDao],
-    remnawave_sdk: FromDishka[RemnawaveSDK],
+    get_internal_squads: FromDishka[GetInternalSquads],
+    get_external_squads: FromDishka[GetExternalSquads],
     **kwargs: Any,
 ) -> dict[str, Any]:
     target_user_id = dialog_manager.dialog_data[TARGET_USER_ID]
@@ -252,17 +257,15 @@ async def squads_getter(
     if not subscription:
         raise ValueError(f"Subscription for user '{target_user_id}' not found")
 
-    internal_task = remnawave_sdk.internal_squads.get_internal_squads()
-    external_task = remnawave_sdk.external_squads.get_external_squads()
+    internal_squads = await get_internal_squads.system()
+    external_squads = await get_external_squads.system()
 
-    internal_resp, external_resp = await asyncio.gather(internal_task, external_task)
-
-    internal_dict = {s.uuid: s.name for s in internal_resp.internal_squads}
+    internal_dict = {s.uuid: s.name for s in internal_squads}
     internal_names = ", ".join(
         internal_dict.get(uuid, str(uuid)) for uuid in subscription.internal_squads
     )
 
-    external_dict = {s.uuid: s.name for s in external_resp.external_squads}
+    external_dict = {s.uuid: s.name for s in external_squads}
     external_name = (
         external_dict.get(subscription.external_squad) if subscription.external_squad else None
     )
@@ -278,7 +281,7 @@ async def internal_squads_getter(
     dialog_manager: DialogManager,
     user_dao: FromDishka[UserDao],
     subscription_dao: FromDishka[SubscriptionDao],
-    remnawave_sdk: FromDishka[RemnawaveSDK],
+    get_internal_squads: FromDishka[GetInternalSquads],
     **kwargs: Any,
 ) -> dict[str, Any]:
     target_user_id = dialog_manager.dialog_data[TARGET_USER_ID]
@@ -292,18 +295,18 @@ async def internal_squads_getter(
     if not subscription:
         raise ValueError(f"Current subscription for user '{target_user_id}' not found")
 
-    result = await remnawave_sdk.internal_squads.get_internal_squads()
+    squads = await get_internal_squads.system()
 
-    squads = [
-        {
-            "uuid": squad.uuid,
-            "name": squad.name,
-            "selected": True if squad.uuid in subscription.internal_squads else False,
-        }
-        for squad in result.internal_squads
-    ]
-
-    return {"squads": squads}
+    return {
+        "squads": [
+            {
+                "uuid": squad.uuid,
+                "name": squad.name,
+                "selected": squad.uuid in subscription.internal_squads,
+            }
+            for squad in squads
+        ]
+    }
 
 
 @inject
@@ -311,7 +314,7 @@ async def external_squads_getter(
     dialog_manager: DialogManager,
     user_dao: FromDishka[UserDao],
     subscription_dao: FromDishka[SubscriptionDao],
-    remnawave_sdk: FromDishka[RemnawaveSDK],
+    get_external_squads: FromDishka[GetExternalSquads],
     **kwargs: Any,
 ) -> dict[str, Any]:
     target_user_id = dialog_manager.dialog_data[TARGET_USER_ID]
@@ -325,22 +328,24 @@ async def external_squads_getter(
     if not subscription:
         raise ValueError(f"Current subscription for user '{target_user_id}' not found")
 
-    result = await remnawave_sdk.external_squads.get_external_squads()
-    existing_squad_uuids = {squad.uuid for squad in result.external_squads}
+    squads = await get_external_squads.system()
+    existing_squad_uuids = {squad.uuid for squad in squads}
 
-    if subscription.external_squad and subscription.external_squad not in existing_squad_uuids:
-        subscription.external_squad = None
+    # Compute selected_uuid locally — do NOT mutate subscription (M10 fix)
+    selected_uuid = (
+        subscription.external_squad if subscription.external_squad in existing_squad_uuids else None
+    )
 
-    squads = [
-        {
-            "uuid": squad.uuid,
-            "name": squad.name,
-            "selected": True if squad.uuid == subscription.external_squad else False,
-        }
-        for squad in result.external_squads
-    ]
-
-    return {"squads": squads}
+    return {
+        "squads": [
+            {
+                "uuid": squad.uuid,
+                "name": squad.name,
+                "selected": squad.uuid == selected_uuid,
+            }
+            for squad in squads
+        ]
+    }
 
 
 @inject
@@ -387,8 +392,9 @@ async def statistics_getter(
     get_user_statistics: FromDishka[GetUserStatistics],
     **kwargs: Any,
 ) -> dict[str, Any]:
+    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
     target_user_id = dialog_manager.dialog_data[TARGET_USER_ID]
-    data = await get_user_statistics.system(target_user_id)
+    data = await get_user_statistics(user, target_user_id)
 
     payment_amounts = (
         "\n".join(
@@ -449,7 +455,7 @@ async def transactions_getter(
     transactions = await transaction_dao.get_by_user(target_user_id)
 
     if not transactions:
-        raise ValueError(f"Transactions not found for user '{target_user_id}'")
+        return {"transactions": []}
 
     formatted_transactions = [
         {

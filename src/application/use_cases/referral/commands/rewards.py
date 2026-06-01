@@ -106,18 +106,23 @@ class GiveReferrerReward(Interactor[GiveReferrerRewardDto, None]):
                 f"Failed to apply reward: unknown type '{reward.type}' for user '{user.remna_name}'"
             )
 
+        # Mark issued immediately after a successful grant, before any notification.
+        # Full atomicity is impossible: the grant (points/days, incl. a Remnawave call
+        # for EXTRA_DAYS) commits in its own transaction, so a crash between that commit
+        # and this one can still leave is_issued=False. Tightening the order — grant →
+        # mark issued → notify — minimizes that window and avoids a failed notification
+        # leaving the reward looking pending.
+        async with self.uow:
+            await self.referral_dao.mark_reward_as_issued(reward.id)
+            await self.uow.commit()
+
         event_reward = ReferralRewardReceivedEvent(
             user=user,
             name=data.referred_name,
             value=reward.amount,
             reward_type=reward.type,
         )
-
         await self.event_publisher.publish(event_reward)
-
-        async with self.uow:
-            await self.referral_dao.mark_reward_as_issued(reward.id)
-            await self.uow.commit()
         logger.info(f"{actor.log} Finished applying reward to user '{user.remna_name}'")
 
 
@@ -181,46 +186,53 @@ class AssignReferralRewards(Interactor[AssignReferralRewardsDto, None]):
             if level > settings.referral.level:
                 continue
 
-            config_value = settings.referral.reward.config.get(level)
-            if config_value is None:
-                logger.info(f"No reward config for level '{level.name}'")
-                continue
+            try:
+                config_value = settings.referral.reward.config.get(level)
+                if config_value is None:
+                    logger.info(f"No reward config for level '{level.name}'")
+                    continue
 
-            reward_amount = await self.calculate_referral_reward.system(
-                CalculateReferralRewardDto(
-                    settings=settings.referral,
-                    transaction=data.transaction,
-                    config_value=config_value,
+                reward_amount = await self.calculate_referral_reward.system(
+                    CalculateReferralRewardDto(
+                        settings=settings.referral,
+                        transaction=data.transaction,
+                        config_value=config_value,
+                    )
                 )
-            )
 
-            if not reward_amount or reward_amount <= 0:
-                logger.warning(
-                    f"Reward amount <= 0 for referrer '{referrer.remna_name}', level '{level.name}'"
-                )
-                continue
+                if not reward_amount or reward_amount <= 0:
+                    logger.warning(
+                        f"Reward amount <= 0 for referrer '{referrer.remna_name}', "
+                        f"level '{level.name}'"
+                    )
+                    continue
 
-            async with self.uow:
-                reward = await self.referral_dao.create_reward(
-                    reward=ReferralRewardDto(
+                async with self.uow:
+                    reward = await self.referral_dao.create_reward(
+                        reward=ReferralRewardDto(
+                            user_id=referrer.id,
+                            type=reward_type,
+                            amount=reward_amount,
+                            is_issued=False,
+                        ),
+                        referral_id=referral_ids[level],
+                    )
+                    await self.uow.commit()
+
+                await self.give_referrer_reward.system(
+                    GiveReferrerRewardDto(
                         user_id=referrer.id,
-                        type=reward_type,
-                        amount=reward_amount,
-                        is_issued=False,
-                    ),
-                    referral_id=referral_ids[level],
+                        reward=reward,
+                        referred_name=data.user.name,
+                    )
                 )
-                await self.uow.commit()
 
-            await self.give_referrer_reward.system(
-                GiveReferrerRewardDto(
-                    user_id=referrer.id,
-                    reward=reward,
-                    referred_name=data.user.name,
+                logger.info(
+                    f"Issued '{reward_type}' reward '{reward_amount}' for referrer "
+                    f"'{referrer.remna_name}' (level '{level.name}')"
                 )
-            )
-
-            logger.info(
-                f"Issued '{reward_type}' reward '{reward_amount}' for referrer "
-                f"'{referrer.remna_name}' (level '{level.name}')"
-            )
+            except Exception:
+                logger.exception(
+                    f"Failed to assign referral reward for level '{level.name}' "
+                    f"to referrer '{referrer.remna_name}' — skipping this level"
+                )

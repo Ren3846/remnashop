@@ -6,6 +6,7 @@ from src.application.common import Interactor, Notifier
 from src.application.common.dao import UserDao
 from src.application.common.policy import Permission
 from src.application.dto import MessagePayloadDto, UserDto
+from src.core.exceptions import PermissionDeniedError
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,13 @@ class SendMessageToUser(Interactor[SendMessageToUserDto, bool]):
         target_user = await self.user_dao.get_by_id(data.user_id)
         if not target_user:
             raise ValueError(f"User '{data.user_id}' not found")
+
+        if not actor.role > target_user.role:
+            logger.warning(
+                f"{actor.log} denied editing user '{target_user.id}': "
+                f"target role '{target_user.role}' >= actor role '{actor.role}'"
+            )
+            raise PermissionDeniedError()
 
         message = await self.notifier.notify_user(user=target_user, payload=data.payload)
 

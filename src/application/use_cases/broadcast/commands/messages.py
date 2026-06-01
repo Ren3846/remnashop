@@ -30,8 +30,19 @@ class InitializeBroadcastMessages(
         actor: UserDto,
         data: InitializeBroadcastMessagesDto,
     ) -> list[BroadcastMessageDto]:
+        existing = await self.broadcast_dao.get_by_task_id(data.task_id)
+        if existing and existing.messages:
+            logger.info(
+                f"Broadcast '{data.task_id}' already initialized "
+                f"({len(existing.messages)} messages); skipping re-insert"
+            )
+            return existing.messages
+
         async with self.uow:
             messages = await self.broadcast_dao.add_messages(data.task_id, data.messages)
+            # Align total_count with the real recipient count: the audience count saved at
+            # StartBroadcast includes web-only users that are filtered out before sending.
+            await self.broadcast_dao.update_total_count(data.task_id, len(data.messages))
             await self.uow.commit()
 
         logger.info(f"Initialized {len(data.messages)} messages for broadcast '{data.task_id}'")

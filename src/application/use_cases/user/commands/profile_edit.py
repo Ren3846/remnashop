@@ -8,7 +8,7 @@ from src.application.common.dao import SettingsDao, UserDao
 from src.application.common.policy import Permission
 from src.application.common.uow import UnitOfWork
 from src.application.dto import UserDto
-from src.core.exceptions import CooldownError
+from src.core.exceptions import CooldownError, PermissionDeniedError
 from src.core.utils.time import datetime_now
 
 
@@ -33,6 +33,13 @@ class SetUserPersonalDiscount(Interactor[SetUserPersonalDiscountDto, None]):
             target_user = await self.user_dao.get_by_id(data.user_id)
             if not target_user:
                 raise ValueError(f"User '{data.user_id}' not found")
+
+            if not actor.role > target_user.role:
+                logger.warning(
+                    f"{actor.log} denied editing user '{target_user.id}': "
+                    f"target role '{target_user.role}' >= actor role '{actor.role}'"
+                )
+                raise PermissionDeniedError()
 
             target_user.personal_discount = data.discount
             await self.user_dao.update(target_user)
@@ -65,6 +72,13 @@ class SetUserPurchaseDiscount(Interactor[SetUserPurchaseDiscountDto, None]):
             if not target_user:
                 raise ValueError(f"User '{data.user_id}' not found")
 
+            if not actor.role > target_user.role:
+                logger.warning(
+                    f"{actor.log} denied editing user '{target_user.id}': "
+                    f"target role '{target_user.role}' >= actor role '{actor.role}'"
+                )
+                raise PermissionDeniedError()
+
             target_user.purchase_discount = data.discount
             await self.user_dao.update(target_user)
             await self.uow.commit()
@@ -86,6 +100,13 @@ class ToggleUserTrialAvailable(Interactor[int, None]):
             target_user = await self.user_dao.get_by_id(user_id)
             if not target_user:
                 raise ValueError(f"User '{user_id}' not found")
+
+            if not actor.role > target_user.role:
+                logger.warning(
+                    f"{actor.log} denied editing user '{target_user.id}': "
+                    f"target role '{target_user.role}' >= actor role '{actor.role}'"
+                )
+                raise PermissionDeniedError()
 
             new_value = not target_user.is_trial_available
             await self.user_dao.set_trial_available(target_user.id, new_value)
@@ -113,6 +134,13 @@ class ChangeUserPoints(Interactor[ChangeUserPointsDto, None]):
             if not target_user:
                 logger.error(f"{actor.log} User not found with id '{data.user_id}'")
                 raise ValueError(f"User '{data.user_id}' not found")
+
+            if not actor.role > target_user.role:
+                logger.warning(
+                    f"{actor.log} denied editing user '{target_user.id}': "
+                    f"target role '{target_user.role}' >= actor role '{actor.role}'"
+                )
+                raise PermissionDeniedError()
 
             new_points = target_user.points + data.amount
             if new_points < 0:
@@ -143,6 +171,13 @@ class ResetUserReferralCode(Interactor[int, None]):
             target_user = await self.user_dao.get_by_id(user_id)
             if not target_user:
                 raise ValueError(f"User '{user_id}' not found")
+
+            if not actor.role > target_user.role:
+                logger.warning(
+                    f"{actor.log} denied editing user '{target_user.id}': "
+                    f"target role '{target_user.role}' >= actor role '{actor.role}'"
+                )
+                raise PermissionDeniedError()
 
             target_user.referral_code = await self.cryptographer.generate_unique_code(
                 self.user_dao.get_by_referral_code

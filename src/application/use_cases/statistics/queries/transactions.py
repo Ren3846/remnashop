@@ -29,7 +29,7 @@ class GetTransactionStatistics(Interactor[None, TransactionStatisticsDto]):
         gateway_stats = await self.transaction_dao.get_gateway_stats()
 
         popular_gateway = None
-        if len(gateway_stats) > 1:
+        if gateway_stats:
             popular_gateway = max(gateway_stats, key=lambda s: s.paid_count).gateway_type
 
         return TransactionStatisticsDto(

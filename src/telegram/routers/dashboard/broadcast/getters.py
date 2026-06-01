@@ -1,6 +1,5 @@
 from typing import Any
 
-from adaptix import Retort
 from aiogram_dialog import DialogManager
 from dishka import FromDishka
 from dishka.integrations.aiogram_dialog import inject
@@ -103,7 +102,6 @@ async def list_getter(
 async def view_getter(
     dialog_manager: DialogManager,
     broadcast_dao: FromDishka[BroadcastDao],
-    retort: FromDishka[Retort],
     **kwargs: Any,
 ) -> dict[str, Any]:
     task_id = dialog_manager.dialog_data.get("task_id")
@@ -115,8 +113,6 @@ async def view_getter(
 
     if not broadcast:
         raise ValueError(f"Broadcast '{task_id}' not found")
-
-    dialog_manager.dialog_data["payload"] = retort.dump(broadcast.payload)
 
     return {
         "broadcast_id": str(broadcast.task_id),

@@ -109,37 +109,39 @@ class SetUserRole(Interactor[SetUserRoleDto, None]):
         self.user_dao = user_dao
 
     async def _execute(self, actor: UserDto, data: SetUserRoleDto) -> None:
-        target_user = await self.user_dao.get_by_id(data.user_id)
-
-        if not target_user:
-            logger.warning(
-                f"{actor.log} Attempted to change role for non-existent user '{data.user_id}'"
-            )
-            raise UserNotFoundError(data.user_id)
-
-        if actor.id == target_user.id:
-            logger.warning(f"{actor.log} Attempted to change their own role")
-            raise PermissionDeniedError()
-
-        if target_user.role == Role.OWNER:
-            logger.warning(f"{actor.log} Attempted to change role of OWNER '{data.user_id}'")
-            raise PermissionDeniedError()
-
-        if not actor.role > data.role:
-            logger.warning(
-                f"{actor.log} Attempted to assign role '{data.role}' "
-                f"which is >= their own role '{actor.role}'"
-            )
-            raise PermissionDeniedError()
-
-        if not actor.role > target_user.role:
-            logger.warning(
-                f"{actor.log} Attempted to change role of '{data.user_id}' "
-                f"({target_user.role}) which is >= their own role '{actor.role}'"
-            )
-            raise PermissionDeniedError()
-
+        # Read and mutate within one transaction (like RevokeRole) to close the
+        # TOCTOU window between the role check and the update.
         async with self.uow:
+            target_user = await self.user_dao.get_by_id(data.user_id)
+
+            if not target_user:
+                logger.warning(
+                    f"{actor.log} Attempted to change role for non-existent user '{data.user_id}'"
+                )
+                raise UserNotFoundError(data.user_id)
+
+            if actor.id == target_user.id:
+                logger.warning(f"{actor.log} Attempted to change their own role")
+                raise PermissionDeniedError()
+
+            if target_user.role == Role.OWNER:
+                logger.warning(f"{actor.log} Attempted to change role of OWNER '{data.user_id}'")
+                raise PermissionDeniedError()
+
+            if not actor.role > data.role:
+                logger.warning(
+                    f"{actor.log} Attempted to assign role '{data.role}' "
+                    f"which is >= their own role '{actor.role}'"
+                )
+                raise PermissionDeniedError()
+
+            if not actor.role > target_user.role:
+                logger.warning(
+                    f"{actor.log} Attempted to change role of '{data.user_id}' "
+                    f"({target_user.role}) which is >= their own role '{actor.role}'"
+                )
+                raise PermissionDeniedError()
+
             target_user.role = data.role
             await self.user_dao.update(target_user)
             await self.uow.commit()

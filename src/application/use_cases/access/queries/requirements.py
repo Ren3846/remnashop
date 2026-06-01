@@ -88,6 +88,8 @@ class CheckChannelSubscription(Interactor[None, CheckChannelSubscriptionResultDt
         channel_link = req.channel_link.get_secret_value()
         channel_url = req.channel_url
 
+        assert actor.telegram_id is not None
+
         chat_id: Union[str, int, None] = None
         if req.channel_has_username:
             chat_id = channel_link
@@ -98,9 +100,15 @@ class CheckChannelSubscription(Interactor[None, CheckChannelSubscriptionResultDt
             logger.warning(
                 f"Channel check skipped for '{actor.remna_name}': no valid chat_id or username"
             )
+            await self.event_publisher.publish(
+                ChannelCheckErrorEvent(
+                    telegram_id=actor.telegram_id,
+                    username=actor.username,
+                    name=actor.name,
+                    reason="Channel check skipped: no valid chat_id or username configured",
+                )
+            )
             return CheckChannelSubscriptionResultDto(is_subscribed=True)
-
-        assert actor.telegram_id is not None
         try:
             member = await self.bot.get_chat_member(chat_id, actor.telegram_id)
 

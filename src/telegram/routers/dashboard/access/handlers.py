@@ -1,9 +1,11 @@
 from aiogram.types import CallbackQuery, Message
 from aiogram_dialog import DialogManager, ShowMode
+from aiogram_dialog.utils import remove_intent_id
 from aiogram_dialog.widgets.input import MessageInput
 from aiogram_dialog.widgets.kbd import Button, Select
 from dishka import FromDishka
 from dishka.integrations.aiogram_dialog import inject
+from loguru import logger
 
 from src.application.dto import TelegramUserDto
 from src.application.use_cases.settings.commands.access import (
@@ -64,8 +66,9 @@ async def on_condition_toggle(
 ) -> None:
     user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
     try:
-        condition = AccessRequirements(callback.data or "")
+        condition = AccessRequirements(remove_intent_id(callback.data or "")[-1])
     except ValueError:
+        logger.warning(f"{user.log} Unrecognized condition toggle payload '{callback.data}'")
         return
     await toggle_condition_requirement(user, condition)
 

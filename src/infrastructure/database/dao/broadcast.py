@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.common.dao import BroadcastDao
 from src.application.dto import BroadcastDto, BroadcastMessageDto
-from src.core.enums import BroadcastMessageStatus, BroadcastStatus
+from src.core.enums import BroadcastStatus
 from src.core.utils.time import datetime_now
 from src.infrastructure.database.models import Broadcast, BroadcastMessage
 
@@ -93,30 +93,6 @@ class BroadcastDaoImpl(BroadcastDao):
         logger.debug(f"Added '{len(messages)}' messages to broadcast task '{task_id}'")
         return self._convert_to_dto_messages_list(db_messages)
 
-    async def update_message_status(
-        self,
-        task_id: UUID,
-        user_id: int,
-        status: BroadcastMessageStatus,
-        message_id: Optional[int] = None,
-    ) -> None:
-        broadcast_id_stmt = (
-            select(Broadcast.id).where(Broadcast.task_id == task_id).scalar_subquery()
-        )
-
-        stmt = (
-            update(BroadcastMessage)
-            .where(
-                BroadcastMessage.broadcast_id == broadcast_id_stmt,
-                BroadcastMessage.user_id == user_id,
-            )
-            .values(status=status, message_id=message_id)
-        )
-        await self.session.execute(stmt)
-        logger.debug(
-            f"Message status for user_id '{user_id}' in task '{task_id}' updated to '{status}'"
-        )
-
     async def update_stats(self, task_id: UUID, success_count: int, failed_count: int) -> None:
         stmt = (
             update(Broadcast)
@@ -132,13 +108,10 @@ class BroadcastDaoImpl(BroadcastDao):
             f"success={success_count}, failed={failed_count}"
         )
 
-    async def get_active(self) -> list[BroadcastDto]:
-        stmt = select(Broadcast).where(Broadcast.status == BroadcastStatus.PROCESSING)
-        result = await self.session.scalars(stmt)
-        db_broadcasts = cast(list, result.all())
-
-        logger.debug(f"Retrieved '{len(db_broadcasts)}' active broadcasts")
-        return self._convert_to_dto_list(db_broadcasts)
+    async def update_total_count(self, task_id: UUID, total: int) -> None:
+        stmt = update(Broadcast).where(Broadcast.task_id == task_id).values(total_count=total)
+        await self.session.execute(stmt)
+        logger.debug(f"Set total_count for task '{task_id}' to '{total}'")
 
     async def delete_old(self, days: int = 7) -> int:
         threshold = datetime_now() - timedelta(days=days)

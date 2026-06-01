@@ -57,6 +57,10 @@ class TogglePayments(Interactor[None, None]):
 
             if waiting_users:
                 logger.info(f"Triggering notification task for '{len(waiting_users)}' users")
+                # Invariant: clear the waitlist ONLY after notifications are successfully
+                # dispatched. If notify raises, the exception propagates before clear(),
+                # so the waitlist is preserved and the next toggle re-notifies (no silent
+                # drop). The trade-off is a possible re-notification if clear() later fails.
                 await self.payment_dispatcher.notify_payments_restored(waiting_users)
 
                 await self.waitlist_dao.clear()
