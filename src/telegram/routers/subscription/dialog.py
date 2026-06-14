@@ -156,7 +156,7 @@ payment_method = Window(
         Select(
             text=I18nFormat(
                 "btn-subscription.payment-method",
-                gateway_type=F["item"]["gateway_type"],
+                gateway_title=F["item"]["gateway_title"],
                 final_amount=F["item"]["final_amount"],
                 original_amount=F["item"]["original_amount"],
                 discount_percent=F["item"]["discount_percent"],

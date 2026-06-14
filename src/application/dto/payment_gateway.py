@@ -36,10 +36,12 @@ class PaymentGatewayDto(BaseDto, TrackableMixin):
 
 @dataclass(kw_only=True)
 class GatewaySettingsDto(TrackableMixin):
+    display_name: Optional[str] = None
+
     @property
     def is_configured(self) -> bool:
         for f in fields(self):
-            if f.name in {"created_at", "updated_at", "type"}:
+            if f.name in {"created_at", "updated_at", "type", "display_name"}:
                 continue
             if getattr(self, f.name) is None:
                 return False
@@ -123,6 +125,10 @@ class PlategaGatewaySettingsDto(GatewaySettingsDto):
     merchant_id: Optional[str] = None
     api_key: Optional[SecretStr] = None
     payment_method: Optional[int] = None
+
+    @property
+    def is_configured(self) -> bool:
+        return self.merchant_id is not None and self.api_key is not None
 
 
 @dataclass(kw_only=True)

@@ -7,12 +7,15 @@ from fastapi import APIRouter, Request, Response, status
 from loguru import logger
 
 from src.application.common import EventPublisher
+from src.application.common.dao import TransactionDao
+from src.application.common.uow import UnitOfWork
 from src.application.events import ErrorEvent
 from src.application.use_cases.gateways.queries.providers import GetPaymentGatewayInstance
 from src.core.config import AppConfig
 from src.core.constants import API_V1, PAYMENTS_WEBHOOK_PATH
 from src.core.enums import PaymentGatewayType, TransactionStatus
 from src.core.exceptions import GatewayNotConfiguredError
+from src.infrastructure.payment_gateways import PlategaGateway
 from src.infrastructure.payment_gateways.base import BasePaymentGateway
 from src.infrastructure.taskiq.tasks.payments import handle_payment_transaction_task
 
@@ -48,12 +51,34 @@ async def _enqueue_payment_task(
         return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
+async def _sync_platega_payment_method(
+    gateway: BasePaymentGateway,
+    payment_id: UUID,
+    transaction_dao: TransactionDao,
+    uow: UnitOfWork,
+) -> None:
+    if not isinstance(gateway, PlategaGateway) or gateway.selected_payment_method is None:
+        return
+
+    async with uow:
+        transaction = await transaction_dao.get_by_payment_id(payment_id)
+        if transaction is None:
+            logger.warning(f"Transaction '{payment_id}' not found for Platega payment method sync")
+            return
+
+        transaction.payment_method = gateway.selected_payment_method
+        await transaction_dao.update(transaction)
+        await uow.commit()
+
+
 async def _process_payment_webhook(
     gateway_type: str,
     request: Request,
     config: AppConfig,
     event_publisher: EventPublisher,
     get_payment_gateway_instance: GetPaymentGatewayInstance,
+    transaction_dao: TransactionDao,
+    uow: UnitOfWork,
 ) -> Response:
     try:
         gateway_enum = PaymentGatewayType(gateway_type.upper())
@@ -79,6 +104,8 @@ async def _process_payment_webhook(
 
     if result is not None:
         payment_id, payment_status = result
+        if gateway_enum == PaymentGatewayType.PLATEGA:
+            await _sync_platega_payment_method(gateway, payment_id, transaction_dao, uow)
         enqueue_error = await _enqueue_payment_task(
             payment_id, payment_status, gateway_enum, gateway_type, config, event_publisher
         )
@@ -96,6 +123,8 @@ async def payments_webhook(
     config: FromDishka[AppConfig],
     event_publisher: FromDishka[EventPublisher],
     get_payment_gateway_instance: FromDishka[GetPaymentGatewayInstance],
+    transaction_dao: FromDishka[TransactionDao],
+    uow: FromDishka[UnitOfWork],
 ) -> Response:
     return await _process_payment_webhook(
         gateway_type=gateway_type,
@@ -103,4 +132,6 @@ async def payments_webhook(
         config=config,
         event_publisher=event_publisher,
         get_payment_gateway_instance=get_payment_gateway_instance,
+        transaction_dao=transaction_dao,
+        uow=uow,
     )

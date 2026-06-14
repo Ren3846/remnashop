@@ -192,6 +192,11 @@ class CreatePayment(Interactor[CreatePaymentDto, PaymentResultDto]):
             status=TransactionStatus.PENDING,
             purchase_type=data.purchase_type,
             gateway_type=gateway_instance.data.type,
+            gateway_display_name=(
+                gateway_instance.data.settings.display_name
+                if gateway_instance.data.settings
+                else None
+            ),
             pricing=data.pricing,
             currency=gateway_instance.data.currency,
             plan_snapshot=data.plan_snapshot,
@@ -248,6 +253,11 @@ class CreateTestPayment(Interactor[PaymentGatewayType, PaymentResultDto]):
                 is_test=True,
                 purchase_type=PurchaseType.NEW,
                 gateway_type=gateway_instance.data.type,
+                gateway_display_name=(
+                    gateway_instance.data.settings.display_name
+                    if gateway_instance.data.settings
+                    else None
+                ),
                 pricing=test_pricing,
                 currency=gateway_instance.data.currency,
                 plan_snapshot=test_plan_snapshot,

@@ -47,6 +47,28 @@ class TransactionDaoImpl(TransactionDao):
         logger.debug(f"Created new transaction '{transaction.payment_id}'")
         return self._convert_to_dto(db_transaction)
 
+    async def update(self, transaction: TransactionDto) -> Optional[TransactionDto]:
+        if not transaction.changed_data:
+            logger.warning("No changes detected in transaction, skipping update")
+            return None
+
+        stmt = (
+            update(Transaction)
+            .where(Transaction.payment_id == transaction.payment_id)
+            .values(**transaction.changed_data)
+            .returning(Transaction)
+        )
+        db_transaction = await self.session.scalar(stmt)
+
+        if db_transaction:
+            logger.debug(
+                f"Transaction '{transaction.payment_id}' updated with '{transaction.changed_data}'"
+            )
+            return self._convert_to_dto(db_transaction)
+
+        logger.warning(f"Failed to update transaction '{transaction.payment_id}': not found")
+        return None
+
     async def get_by_payment_id(self, payment_id: UUID) -> Optional[TransactionDto]:
         stmt = select(Transaction).where(Transaction.payment_id == payment_id)
         db_transaction = await self.session.scalar(stmt)

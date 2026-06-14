@@ -38,6 +38,8 @@ class TransactionDto(BaseDto, TrackableMixin, TimestampMixin):
 
     purchase_type: PurchaseType
     gateway_type: PaymentGatewayType
+    gateway_display_name: str | None = None
+    payment_method: str | None = None
 
     pricing: "PriceDetailsDto"
     currency: Currency

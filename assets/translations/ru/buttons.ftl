@@ -560,7 +560,7 @@ btn-subscription =
     .back-payment-method = ⬅️ Изменить способ оплаты
     .connect = 🚀 Подключиться
 
-    .payment-method = { gateway-type } | { $final_amount ->
+    .payment-method = { $gateway_title } | { $final_amount ->
     [0] 🎁
     *[HAS] { $final_amount }{ $currency }
     }
