@@ -1,16 +1,9 @@
-from .bot import BotService
-from .command import CommandService
 from .landing_payment import LandingPaymentService
-from .notification import NotificationService
 from .pricing import PricingService
 from .remnawave import RemnaWebhookService
-from .webhook import WebhookService
 
 __all__ = [
-    "BotService",
-    "CommandService",
-    "NotificationService",
+    "LandingPaymentService",
     "PricingService",
     "RemnaWebhookService",
-    "WebhookService",
 ]

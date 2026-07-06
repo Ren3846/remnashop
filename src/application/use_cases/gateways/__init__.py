@@ -4,6 +4,7 @@ from src.application.common.interactor import Interactor
 
 from .commands.configuration import (
     MovePaymentGatewayUp,
+    ResetPaymentGatewaySettingsField,
     TogglePaymentGatewayActive,
     UpdatePaymentGatewaySettings,
 )
@@ -21,6 +22,7 @@ GATEWAYS_USE_CASES: Final[tuple[type[Interactor], ...]] = (
     MovePaymentGatewayUp,
     TogglePaymentGatewayActive,
     UpdatePaymentGatewaySettings,
+    ResetPaymentGatewaySettingsField,
     CreateDefaultPaymentGateway,
     CreatePayment,
     CreateTestPayment,

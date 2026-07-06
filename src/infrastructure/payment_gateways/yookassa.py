@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 from decimal import Decimal
-from typing import Any, Final, Optional
+from typing import Any, Final, Union
 from uuid import UUID
 
 import orjson
@@ -62,7 +62,7 @@ class YookassaGateway(BasePaymentGateway):
             ),
         )
 
-    async def handle_create_payment(self, amount: Decimal, details: str, email: Optional[str] = None) -> PaymentResultDto:
+    async def handle_create_payment(self, amount: Decimal, details: str) -> PaymentResultDto:
         payload = await self._create_payment_payload(str(amount), details)
         headers = {"Idempotence-Key": str(uuid.uuid4())}
         logger.debug(f"Creating payment payload: {payload}")
@@ -104,7 +104,7 @@ class YookassaGateway(BasePaymentGateway):
         )
         raise last_connect_error  # type: ignore[misc]
 
-    async def handle_webhook(self, request: Request) -> tuple[UUID, TransactionStatus]:
+    async def handle_webhook(self, request: Request) -> Union[tuple[UUID, TransactionStatus], None]:
         logger.debug("Received YooKassa webhook request")
 
         if not self._verify_webhook(request):

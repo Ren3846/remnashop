@@ -1,7 +1,8 @@
+from typing import Any
+
 from aiogram.enums import ButtonStyle
-from aiogram_dialog import Dialog, Window
+from aiogram_dialog import Dialog, DialogManager, Window
 from aiogram_dialog.widgets.input import MessageInput
-from aiogram_dialog.widgets.kbd import Button, Column, Group, Row, Select, SwitchTo, Url
 from aiogram_dialog.widgets.style import Style
 from aiogram_dialog.widgets.text import Format
 from magic_filter import F
@@ -11,6 +12,7 @@ from src.core.enums import BannerName, PaymentGatewayType, PurchaseType
 from src.telegram.keyboards import back_main_menu_button, connect_buttons
 from src.telegram.states import Subscription
 from src.telegram.widgets import Banner, I18nFormat, IgnoreUpdate
+from src.telegram.widgets.kbd import Button, Column, Group, Row, Select, SwitchTo, Url
 
 from .getters import (
     confirm_getter,
@@ -31,7 +33,15 @@ from .handlers import (
     on_plan_select,
     on_subscription_dialog_start,
     on_subscription_plans,
+    on_subscription_start,
 )
+from .promocode_handlers import getter_promocode, on_promocode_confirm, on_promocode_input
+
+
+async def on_subscription_dialog_on_start(start_data: Any, manager: DialogManager) -> None:
+    await on_subscription_start(start_data, manager)
+    await on_subscription_dialog_start(start_data, manager)
+
 
 subscription = Window(
     Banner(BannerName.SUBSCRIPTION),
@@ -56,14 +66,13 @@ subscription = Window(
             when=F["has_active_subscription"],
         ),
     ),
-    # Row(
-    #     Button(
-    #         text=I18nFormat("btn-subscription.promocode"),
-    #         id=f"{PAYMENT_PREFIX}promocode",
-    #         on_click=show_dev_popup,
-    #         # state=Subscription.PROMOCODE,
-    #     ),
-    # ),
+    Row(
+        Button(
+            text=I18nFormat("btn-subscription.promocode"),
+            id="goto_promocode",
+            on_click=lambda c, w, m: m.switch_to(Subscription.PROMOCODE),
+        ),
+    ),
     *back_main_menu_button,
     IgnoreUpdate(),
     state=Subscription.MAIN,
@@ -158,7 +167,7 @@ payment_method = Window(
         Select(
             text=I18nFormat(
                 "btn-subscription.payment-method",
-                gateway_type=F["item"]["gateway_type"],
+                gateway_title=F["item"]["gateway_title"],
                 final_amount=F["item"]["final_amount"],
                 original_amount=F["item"]["original_amount"],
                 discount_percent=F["item"]["discount_percent"],
@@ -298,8 +307,39 @@ failed = Window(
     state=Subscription.FAILED,
 )
 
+promocode_window = Window(
+    Banner(BannerName.PROMOCODE),
+    I18nFormat("msg-promocode-input", ~F["has_promo"]),
+    I18nFormat(
+        "msg-promocode-confirm",
+        F["has_promo"],
+        promo_code=F["promo_code"],
+        reward_type=F["promo_reward_type"],
+        reward=F["promo_reward"],
+        show_reset_warning=F["show_reset_warning"],
+        will_replace_subscription=F["will_replace_subscription"],
+    ),
+    MessageInput(on_promocode_input),
+    Row(
+        Button(
+            text=I18nFormat("btn-subscription.promocode-confirm"),
+            id="confirm_promo",
+            on_click=on_promocode_confirm,
+            when=F["has_promo"],
+        ),
+    ),
+    SwitchTo(
+        text=I18nFormat("btn-back.general"),
+        id="back_main",
+        state=Subscription.MAIN,
+    ),
+    state=Subscription.PROMOCODE,
+    getter=getter_promocode,
+)
+
 router = Dialog(
     subscription,
+    promocode_window,
     plan,
     plans,
     duration,
@@ -309,5 +349,5 @@ router = Dialog(
     success_payment,
     success_trial,
     failed,
-    on_start=on_subscription_dialog_start,
+    on_start=on_subscription_dialog_on_start,
 )

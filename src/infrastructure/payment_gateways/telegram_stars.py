@@ -1,6 +1,6 @@
 import uuid
 from decimal import Decimal
-from typing import Optional
+from typing import Union
 from uuid import UUID
 
 from aiogram.types import LabeledPrice
@@ -15,7 +15,7 @@ from .base import BasePaymentGateway
 
 # https://core.telegram.org/api/stars/
 class TelegramStarsGateway(BasePaymentGateway):
-    async def handle_create_payment(self, amount: Decimal, details: str, email: Optional[str] = None) -> PaymentResultDto:
+    async def handle_create_payment(self, amount: Decimal, details: str) -> PaymentResultDto:
         prices = [LabeledPrice(label=self.data.currency, amount=int(amount))]
         payment_id = uuid.uuid4()
 
@@ -34,5 +34,5 @@ class TelegramStarsGateway(BasePaymentGateway):
             logger.exception(f"An unexpected error occurred while creating payment: {e}")
             raise
 
-    async def handle_webhook(self, request: Request) -> tuple[UUID, TransactionStatus]:
+    async def handle_webhook(self, request: Request) -> Union[tuple[UUID, TransactionStatus], None]:
         raise NotImplementedError()

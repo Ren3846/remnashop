@@ -10,6 +10,7 @@ from .platega import PlategaGateway
 from .robokassa import RobokassaGateway
 from .telegram_stars import TelegramStarsGateway
 from .url_pay import UrlPayGateway
+from .valutix import ValutixGateway
 from .wata import WataGateway
 from .yookassa import YookassaGateway
 from .yoomoney import YoomoneyGateway
@@ -28,6 +29,7 @@ __all__ = [
     "RobokassaGateway",
     "TelegramStarsGateway",
     "UrlPayGateway",
+    "ValutixGateway",
     "WataGateway",
     "YookassaGateway",
     "YoomoneyGateway",

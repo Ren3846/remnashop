@@ -23,6 +23,7 @@ from src.infrastructure.payment_gateways import (
     RobokassaGateway,
     TelegramStarsGateway,
     UrlPayGateway,
+    ValutixGateway,
     WataGateway,
     YookassaGateway,
     YoomoneyGateway,
@@ -41,6 +42,7 @@ GATEWAY_MAP: dict[PaymentGatewayType, Type[BasePaymentGateway]] = {
     PaymentGatewayType.PLATEGA: PlategaGateway,
     PaymentGatewayType.ROBOKASSA: RobokassaGateway,
     PaymentGatewayType.URLPAY: UrlPayGateway,
+    PaymentGatewayType.VALUTIX: ValutixGateway,
     PaymentGatewayType.WATA: WataGateway,
     PaymentGatewayType.LAVA: LavaGateway,
 }
@@ -48,7 +50,10 @@ GATEWAY_MAP: dict[PaymentGatewayType, Type[BasePaymentGateway]] = {
 
 class PaymentGatewaysProvider(Provider):
     scope = Scope.APP
-    _cached_gateways: dict[PaymentGatewayType, BasePaymentGateway] = {}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._cached_gateways: dict[PaymentGatewayType, BasePaymentGateway] = {}
 
     @provide()
     def get_gateway_factory(self, bot: Bot, config: AppConfig) -> PaymentGatewayFactory:

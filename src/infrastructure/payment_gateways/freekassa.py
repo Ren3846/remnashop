@@ -3,7 +3,7 @@ import hmac
 import time
 import uuid
 from decimal import Decimal
-from typing import Any, Final, Optional
+from typing import Any, Final, Union
 from uuid import UUID
 
 import orjson
@@ -45,7 +45,7 @@ class FreeKassaGateway(BasePaymentGateway):
 
         self._client = self._make_client(base_url=self.API_BASE)
 
-    async def handle_create_payment(self, amount: Decimal, details: str, email: Optional[str] = None) -> PaymentResultDto:
+    async def handle_create_payment(self, amount: Decimal, details: str) -> PaymentResultDto:
         order_id = str(uuid.uuid4())
         payload = await self._create_payment_payload(str(amount), order_id)
         logger.debug(f"Creating payment payload: {payload}")
@@ -73,7 +73,7 @@ class FreeKassaGateway(BasePaymentGateway):
             logger.exception(f"An unexpected error occurred while creating payment: {e}")
             raise
 
-    async def handle_webhook(self, request: Request) -> tuple[UUID, TransactionStatus]:
+    async def handle_webhook(self, request: Request) -> Union[tuple[UUID, TransactionStatus], None]:
         logger.debug(f"Received {self.__class__.__name__} webhook request")
 
         form = await request.form()

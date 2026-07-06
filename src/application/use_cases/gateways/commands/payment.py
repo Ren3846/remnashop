@@ -23,6 +23,7 @@ from src.application.common.dao import (
 from src.application.common.policy import Permission
 from src.application.common.uow import UnitOfWork
 from src.application.dto import (
+    MessagePayloadDto,
     PaymentResultDto,
     PlanSnapshotDto,
     PriceDetailsDto,
@@ -40,7 +41,9 @@ from src.application.dto.payment_gateway import (
     PaymentGatewayDto,
     PlategaGatewaySettingsDto,
     RoboKassaGatewaySettingsDto,
+    TelegramStarsGatewaySettingsDto,
     UrlPayGatewaySettingsDto,
+    ValutixGatewaySettingsDto,
     WataGatewaySettingsDto,
     YooKassaGatewaySettingsDto,
     YooMoneyGatewaySettingsDto,
@@ -55,7 +58,15 @@ from src.application.use_cases.subscription.commands.purchase import (
     PurchaseSubscription,
     PurchaseSubscriptionDto,
 )
-from src.core.enums import Currency, PaymentGatewayType, PurchaseType, TransactionStatus
+from src.core.enums import (
+    Currency,
+    PaymentGatewayType,
+    PurchaseType,
+    Role,
+    SystemNotificationType,
+    TransactionStatus,
+)
+from src.core.exceptions import PurchaseError
 from src.core.utils.i18n_helpers import (
     i18n_format_days,
     i18n_format_device_limit,
@@ -72,13 +83,18 @@ class CreateDefaultPaymentGateway(Interactor[None, None]):
 
     async def _execute(self, actor: UserDto, data: None) -> None:
         async with self.uow:
+            created_any = False
+
             for gateway_type in PaymentGatewayType:
                 if await self.gateway_dao.get_by_type(gateway_type):
                     continue
 
+                created_any = True
+
                 is_active = gateway_type == PaymentGatewayType.TELEGRAM_STARS
 
                 settings_map = {
+                    PaymentGatewayType.TELEGRAM_STARS: TelegramStarsGatewaySettingsDto,
                     PaymentGatewayType.YOOKASSA: YooKassaGatewaySettingsDto,
                     PaymentGatewayType.YOOMONEY: YooMoneyGatewaySettingsDto,
                     PaymentGatewayType.CRYPTOMUS: CryptomusGatewaySettingsDto,
@@ -90,6 +106,7 @@ class CreateDefaultPaymentGateway(Interactor[None, None]):
                     PaymentGatewayType.PLATEGA: PlategaGatewaySettingsDto,
                     PaymentGatewayType.ROBOKASSA: RoboKassaGatewaySettingsDto,
                     PaymentGatewayType.URLPAY: UrlPayGatewaySettingsDto,
+                    PaymentGatewayType.VALUTIX: ValutixGatewaySettingsDto,
                     PaymentGatewayType.WATA: WataGatewaySettingsDto,
                     PaymentGatewayType.LAVA: LavaGatewaySettingsDto,
                 }
@@ -106,7 +123,19 @@ class CreateDefaultPaymentGateway(Interactor[None, None]):
                 )
                 logger.info(f"Payment gateway '{gateway_type}' created")
 
+            if created_any:
+                await self._reorder_to_enum()
+
             await self.uow.commit()
+
+    async def _reorder_to_enum(self) -> None:
+        order = {gateway_type: i for i, gateway_type in enumerate(PaymentGatewayType, start=1)}
+
+        for gateway in await self.gateway_dao.get_all():
+            desired_index = order[gateway.type]
+            if gateway.order_index != desired_index:
+                gateway.order_index = desired_index
+                await self.gateway_dao.update(gateway)
 
 
 @dataclass(frozen=True)
@@ -143,31 +172,60 @@ class CreatePayment(Interactor[CreatePaymentDto, PaymentResultDto]):
         details = i18n.get(
             "payment-invoice-description",
             purchase_type=data.purchase_type,
-            name=data.plan_snapshot.name,
+            name=i18n.get(data.plan_snapshot.name),
             duration=i18n.get(key, **kw),
         )
 
+        if data.pricing.is_free:
+            async with self.uow:
+                existing = await self.transaction_dao.get_recent_pending(
+                    user_id=actor.id,
+                    plan_id=data.plan_snapshot.id,
+                    duration_days=data.plan_snapshot.duration,
+                    gateway_type=gateway_instance.data.type,
+                )
+                if existing is not None:
+                    logger.info(
+                        f"Reusing pending transaction '{existing.payment_id}' "
+                        f"for user '{actor.remna_name}'"
+                    )
+                    return PaymentResultDto(id=existing.payment_id, url=None)
+
+                transaction = TransactionDto(
+                    payment_id=uuid.uuid4(),
+                    user_id=actor.id,
+                    status=TransactionStatus.PENDING,
+                    purchase_type=data.purchase_type,
+                    gateway_type=gateway_instance.data.type,
+                    pricing=data.pricing,
+                    currency=gateway_instance.data.currency,
+                    plan_snapshot=data.plan_snapshot,
+                )
+                await self.transaction_dao.create(transaction)
+                await self.uow.commit()
+
+            logger.info(
+                f"Payment for user '{actor.remna_name}' not created because pricing is free"
+            )
+            return PaymentResultDto(id=transaction.payment_id, url=None)
+
         transaction = TransactionDto(
             payment_id=uuid.uuid4(),
-            user_telegram_id=actor.telegram_id,
+            user_id=actor.id,
             status=TransactionStatus.PENDING,
             purchase_type=data.purchase_type,
             gateway_type=gateway_instance.data.type,
+            gateway_display_name=(
+                gateway_instance.data.settings.display_name
+                if gateway_instance.data.settings
+                else None
+            ),
             pricing=data.pricing,
             currency=gateway_instance.data.currency,
             plan_snapshot=data.plan_snapshot,
         )
 
         async with self.uow:
-            if data.pricing.is_free:
-                await self.transaction_dao.create(transaction)
-                await self.uow.commit()
-
-                logger.info(
-                    f"Payment for user '{actor.telegram_id}' not created because pricing is free"
-                )
-                return PaymentResultDto(id=transaction.payment_id, url=None)
-
             payment: PaymentResultDto = await gateway_instance.handle_create_payment(
                 amount=data.pricing.final_amount,
                 details=details,
@@ -178,7 +236,7 @@ class CreatePayment(Interactor[CreatePaymentDto, PaymentResultDto]):
             await self.transaction_dao.create(transaction)
             await self.uow.commit()
 
-        logger.info(f"Created transaction '{payment.id}' for user '{actor.telegram_id}'")
+        logger.info(f"Created transaction '{payment.id}' for user {actor.log}")
         return payment
 
 
@@ -214,11 +272,16 @@ class CreateTestPayment(Interactor[PaymentGatewayType, PaymentResultDto]):
         async with self.uow:
             transaction = TransactionDto(
                 payment_id=payment.id,
-                user_telegram_id=actor.telegram_id,
+                user_id=actor.id,
                 status=TransactionStatus.PENDING,
                 is_test=True,
                 purchase_type=PurchaseType.NEW,
                 gateway_type=gateway_instance.data.type,
+                gateway_display_name=(
+                    gateway_instance.data.settings.display_name
+                    if gateway_instance.data.settings
+                    else None
+                ),
                 pricing=test_pricing,
                 currency=gateway_instance.data.currency,
                 plan_snapshot=test_plan_snapshot,
@@ -226,7 +289,7 @@ class CreateTestPayment(Interactor[PaymentGatewayType, PaymentResultDto]):
             await self.transaction_dao.create(transaction)
             await self.uow.commit()
 
-        logger.info(f"Created test transaction '{payment.id}' for user '{actor.telegram_id}'")
+        logger.info(f"Created test transaction '{payment.id}' for user {actor.log}")
         return payment
 
 
@@ -234,6 +297,7 @@ class CreateTestPayment(Interactor[PaymentGatewayType, PaymentResultDto]):
 class ProcessPaymentDto:
     payment_id: UUID
     new_transaction_status: TransactionStatus
+    gateway_type: PaymentGatewayType
 
 
 class ProcessPayment(Interactor[ProcessPaymentDto, None]):
@@ -276,35 +340,98 @@ class ProcessPayment(Interactor[ProcessPaymentDto, None]):
                 logger.critical(f"Transaction not found for '{payment_id}'")
                 return
 
-            user = await self.user_dao.get_by_telegram_id(transaction.user_telegram_id)
+            if transaction.gateway_type != data.gateway_type:
+                logger.error(
+                    f"Gateway mismatch for transaction '{payment_id}': "
+                    f"expected '{transaction.gateway_type}', got '{data.gateway_type}'"
+                )
+                return
+
+            user = await self.user_dao.get_by_id(transaction.user_id)
 
             if not user:
                 logger.critical(f"User not found for transaction '{payment_id}'")
                 return
 
-            if transaction.is_completed:
-                logger.warning(
-                    f"Transaction '{payment_id}' for user '{user.telegram_id}' already completed"
-                )
-                return
-
             if new_status == TransactionStatus.CANCELED:
-                await self.transaction_dao.update_status(payment_id, TransactionStatus.CANCELED)
+                updated = await self.transaction_dao.transition_status(
+                    payment_id,
+                    TransactionStatus.CANCELED,
+                    (TransactionStatus.PENDING,),
+                )
+                if not updated:
+                    logger.warning(
+                        f"Cancel transition did not match for '{payment_id}', "
+                        f"user '{user.remna_name}' — already transitioned"
+                    )
+                    return
                 await self.uow.commit()
-                logger.info(f"Payment canceled '{payment_id}' for user '{user.telegram_id}'")
+                logger.info(f"Payment canceled '{payment_id}' for user {user.log}")
                 return
 
             elif new_status == TransactionStatus.COMPLETED:
-                await self.transaction_dao.update_status(payment_id, TransactionStatus.COMPLETED)
-                await self._handle_success(user, transaction)
+                updated = await self.transaction_dao.transition_status(
+                    payment_id,
+                    TransactionStatus.COMPLETED,
+                    (TransactionStatus.PENDING, TransactionStatus.FAILED),
+                )
+                if not updated:
+                    logger.warning(
+                        f"Completed transition did not match for '{payment_id}', "
+                        f"user '{user.remna_name}' — already transitioned"
+                    )
+                    return
                 await self.uow.commit()
-                logger.info(f"Payment succeeded '{payment_id}' for user '{user.telegram_id}'")
+
+            elif new_status == TransactionStatus.REFUNDED:
+                updated = await self.transaction_dao.transition_status(
+                    payment_id,
+                    TransactionStatus.REFUNDED,
+                    (TransactionStatus.COMPLETED,),
+                )
+                if not updated:
+                    logger.warning(
+                        f"Refund transition did not match for '{payment_id}', "
+                        f"user '{user.remna_name}' — not in COMPLETED"
+                    )
+                    return
+                await self.uow.commit()
+                logger.warning(f"Payment refunded '{payment_id}' for user {user.log}")
+                await self.notifier.notify_admins(
+                    MessagePayloadDto(
+                        i18n_key="event-payment.refunded",
+                        i18n_kwargs={
+                            "payment_id": str(payment_id),
+                            "gateway_type": transaction.gateway_type,
+                            "final_amount": transaction.pricing.final_amount,
+                            "original_amount": transaction.pricing.original_amount,
+                            "discount_percent": transaction.pricing.discount_percent,
+                            "currency": transaction.currency.symbol,
+                            "telegram_id": user.telegram_id or 0,
+                            "username": user.username or 0,
+                            "name": user.name,
+                            "email": user.email,
+                        },
+                    )
+                )
+                # Subscription revocation is a separate task (out of scope here)
+                return
 
             else:
                 logger.warning(
                     f"Received unhandled transaction status '{new_status}' "
-                    f"for payment '{payment_id}', user '{user.telegram_id}'"
+                    f"for payment '{payment_id}', user '{user.remna_name}'"
                 )
+                return
+
+        # UoW closed cleanly; purchase_subscription will open its own UoW
+        await self._handle_success(user, transaction)
+        logger.info(f"Payment succeeded '{payment_id}' for user {user.log}")
+
+    async def _handle_success(self, user: UserDto, transaction: TransactionDto) -> None:
+        if transaction.is_test:
+            await self.notifier.notify_user(user, i18n_key="ntf-gateway.test-payment-confirmed")
+            return
 
     async def _handle_success(self, user: UserDto, transaction: TransactionDto) -> None:
         if transaction.is_test:
@@ -312,19 +439,24 @@ class ProcessPayment(Interactor[ProcessPaymentDto, None]):
             return
 
         if not user.email:
-            await self.redirect.to_post_payment_email(
-                user.telegram_id,
-                transaction.payment_id,
-                transaction.purchase_type,
-            )
+            if user.telegram_id is not None:
+                await self.redirect.to_post_payment_email(
+                    user.telegram_id,
+                    transaction.payment_id,
+                    transaction.purchase_type,
+                )
             return
 
         await self._activate_paid_purchase(user, transaction)
 
     async def _activate_paid_purchase(self, user: UserDto, transaction: TransactionDto) -> None:
         await activate_paid_purchase(
+            uow=self.uow,
             subscription_dao=self.subscription_dao,
+            transaction_dao=self.transaction_dao,
             event_publisher=self.event_publisher,
+            notifier=self.notifier,
+            redirect=self.redirect,
             i18n=self.i18n,
             purchase_subscription=self.purchase_subscription,
             assign_referral_rewards=self.assign_referral_rewards,
@@ -335,22 +467,27 @@ class ProcessPayment(Interactor[ProcessPaymentDto, None]):
 
 async def activate_paid_purchase(
     *,
+    uow: UnitOfWork,
     subscription_dao: SubscriptionDao,
+    transaction_dao: TransactionDao,
     event_publisher: EventPublisher,
+    notifier: Notifier,
+    redirect: Redirect,
     i18n: TranslatorRunner,
     purchase_subscription: PurchaseSubscription,
     assign_referral_rewards: AssignReferralRewards,
     user: UserDto,
     transaction: TransactionDto,
 ) -> None:
-    subscription = await subscription_dao.get_current(user.telegram_id)
+    subscription = await subscription_dao.get_current(user.id)
     old_plan = subscription.plan_snapshot if subscription else None
 
     event = UserPurchaseEvent(
+        user_id=user.id,
         telegram_id=user.telegram_id,
         name=user.name,
+        email=user.email,
         username=user.username,
-        #
         purchase_type=transaction.purchase_type,
         is_trial_plan=transaction.plan_snapshot.is_trial,
         payment_id=transaction.payment_id,
@@ -359,14 +496,12 @@ async def activate_paid_purchase(
         discount_percent=transaction.pricing.discount_percent,
         original_amount=transaction.pricing.original_amount,
         currency=transaction.currency.symbol,
-        #
-        plan_name=transaction.plan_snapshot.name,
+        plan_name=(transaction.plan_snapshot.name, {}),
         plan_type=transaction.plan_snapshot.type,
         plan_traffic_limit=i18n_format_traffic_limit(transaction.plan_snapshot.traffic_limit),
         plan_device_limit=i18n_format_device_limit(transaction.plan_snapshot.device_limit),
         plan_duration=i18n_format_days(transaction.plan_snapshot.duration),
-        #
-        previous_plan_name=i18n.get(old_plan.name) if old_plan else "N/A",
+        previous_plan_name=(old_plan.name, {}) if old_plan else "N/A",
         previous_plan_type={
             "key": "plan-type",
             "plan_type": old_plan.type if old_plan else "N/A",
@@ -380,11 +515,69 @@ async def activate_paid_purchase(
         previous_plan_duration=i18n_format_days(old_plan.duration) if old_plan else "N/A",
     )
 
+    try:
+        await purchase_subscription.system(PurchaseSubscriptionDto(user, transaction, subscription))
+    except Exception as e:
+        logger.exception(
+            f"Failed to process purchase for user '{user.remna_name}', "
+            f"transaction '{transaction.payment_id}'"
+        )
+        async with uow:
+            await transaction_dao.update_status(transaction.payment_id, TransactionStatus.FAILED)
+            await uow.commit()
+        await notifier.notify_system(
+            MessagePayloadDto(
+                i18n_key="event-payment.purchase-failed",
+                i18n_kwargs={
+                    "payment_id": str(transaction.payment_id),
+                    "gateway_type": transaction.gateway_type,
+                    "final_amount": transaction.pricing.final_amount,
+                    "original_amount": transaction.pricing.original_amount,
+                    "discount_percent": transaction.pricing.discount_percent,
+                    "currency": transaction.currency.symbol,
+                    "telegram_id": user.telegram_id or 0,
+                    "username": user.username or 0,
+                    "name": user.name,
+                    "email": user.email,
+                },
+            ),
+            roles=[Role.OWNER, Role.DEV],
+            notification_type=SystemNotificationType.SYSTEM,
+        )
+        if user.telegram_id is not None:
+            await redirect.to_failed_payment(user.telegram_id)
+        raise PurchaseError(e)
+
     await event_publisher.publish(event)
-    await purchase_subscription.system(PurchaseSubscriptionDto(user, transaction, subscription))
 
     if not transaction.pricing.is_free:
-        await assign_referral_rewards.system(AssignReferralRewardsDto(user, transaction))
+        try:
+            await assign_referral_rewards.system(AssignReferralRewardsDto(user, transaction))
+        except Exception:
+            logger.exception(
+                f"Referral reward assignment failed for user '{user.remna_name}', "
+                f"transaction '{transaction.payment_id}' — purchase succeeded"
+            )
+            await notifier.notify_admins(
+                MessagePayloadDto(
+                    i18n_key="event-payment.referral-failed",
+                    i18n_kwargs={
+                        "payment_id": str(transaction.payment_id),
+                        "gateway_type": transaction.gateway_type,
+                        "final_amount": transaction.pricing.final_amount,
+                        "original_amount": transaction.pricing.original_amount,
+                        "discount_percent": transaction.pricing.discount_percent,
+                        "currency": transaction.currency.symbol,
+                        "telegram_id": user.telegram_id or 0,
+                        "username": user.username or 0,
+                        "name": user.name,
+                        "email": user.email,
+                    },
+                )
+            )
+
+    if user.telegram_id is not None:
+        await redirect.to_success_payment(user.telegram_id, transaction.purchase_type)
 
 
 @dataclass(frozen=True)
@@ -403,6 +596,7 @@ class CompletePaidPurchase(Interactor[CompletePaidPurchaseDto, None]):
         subscription_dao: SubscriptionDao,
         event_publisher: EventPublisher,
         redirect: Redirect,
+        notifier: Notifier,
         i18n: TranslatorRunner,
         assign_referral_rewards: AssignReferralRewards,
         purchase_subscription: PurchaseSubscription,
@@ -413,6 +607,7 @@ class CompletePaidPurchase(Interactor[CompletePaidPurchaseDto, None]):
         self.subscription_dao = subscription_dao
         self.event_publisher = event_publisher
         self.redirect = redirect
+        self.notifier = notifier
         self.i18n = i18n
         self.assign_referral_rewards = assign_referral_rewards
         self.purchase_subscription = purchase_subscription
@@ -425,23 +620,29 @@ class CompletePaidPurchase(Interactor[CompletePaidPurchaseDto, None]):
                 logger.warning(f"Paid purchase activation skipped: transaction '{data.payment_id}'")
                 return
 
-            user = await self.user_dao.get_by_telegram_id(transaction.user_telegram_id)
+            user = await self.user_dao.get_by_id(transaction.user_id)
 
             if not user or not user.email:
                 logger.warning(
-                    f"Paid purchase activation skipped: user '{transaction.user_telegram_id}' "
-                    "has no email"
+                    f"Paid purchase activation skipped: user '{transaction.user_id}' has no email"
                 )
                 return
 
             if await self._is_already_activated(transaction, user):
-                await self.redirect.to_success_payment(user.telegram_id, transaction.purchase_type)
+                if user.telegram_id is not None:
+                    await self.redirect.to_success_payment(
+                        user.telegram_id, transaction.purchase_type
+                    )
                 await self.uow.commit()
                 return
 
             await activate_paid_purchase(
+                uow=self.uow,
                 subscription_dao=self.subscription_dao,
+                transaction_dao=self.transaction_dao,
                 event_publisher=self.event_publisher,
+                notifier=self.notifier,
+                redirect=self.redirect,
                 i18n=self.i18n,
                 purchase_subscription=self.purchase_subscription,
                 assign_referral_rewards=self.assign_referral_rewards,
@@ -458,5 +659,5 @@ class CompletePaidPurchase(Interactor[CompletePaidPurchaseDto, None]):
         if transaction.purchase_type != PurchaseType.NEW:
             return False
 
-        subscription = await self.subscription_dao.get_current(user.telegram_id)
+        subscription = await self.subscription_dao.get_current(user.id)
         return subscription is not None and not subscription.is_trial

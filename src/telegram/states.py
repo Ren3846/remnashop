@@ -41,6 +41,8 @@ class DashboardStatistics(StatesGroup):
     USERS = State()
     SUBSCRIPTIONS = State()
     TRANSACTIONS = State()
+    PROMOCODES = State()
+    PROMOCODE_DETAIL = State()
     REFERRALS = State()
 
 
@@ -62,8 +64,10 @@ class DashboardPromocodes(StatesGroup):
     TYPE = State()
     AVAILABILITY = State()
     REWARD = State()
-    LIFETIME = State()
-    ALLOWED = State()
+    PLAN = State()
+    PLAN_DURATION = State()
+    EXPIRES = State()
+    MAX_ACTIVATIONS = State()
 
 
 class DashboardAccess(StatesGroup):
@@ -80,6 +84,9 @@ class DashboardUsers(StatesGroup):
     RECENT_REGISTERED = State()
     RECENT_ACTIVITY = State()
     BLACKLIST = State()
+    BLACKLIST_USERS = State()
+    BLACKLIST_BLOCK = State()
+    BLACKLIST_SOURCES = State()
 
 
 class DashboardUser(StatesGroup):
@@ -113,6 +120,23 @@ class DashboardRemnashop(StatesGroup):
     MAIN = State()
     ADMINS = State()
     ADVERTISING = State()
+    TRANSACTIONS = State()
+
+
+class RemnashopBackup(StatesGroup):
+    MAIN = State()
+    INTERVAL = State()
+    MAX_FILES = State()
+
+
+class RemnashopExtra(StatesGroup):
+    MAIN = State()
+    DEVICE_SINGLE = State()
+    DEVICE_ALL = State()
+    LINK_RESET = State()
+    REFERRAL_RESET = State()
+    TRIAL_CHANNEL_GUARD = State()
+    MINI_APP_RESERVE = State()
 
 
 class RemnashopReferral(StatesGroup):
@@ -122,6 +146,14 @@ class RemnashopReferral(StatesGroup):
     REWARD_TYPE = State()
     ACCRUAL_STRATEGY = State()
     REWARD_STRATEGY = State()
+
+
+class RemnashopAdvertising(StatesGroup):
+    MAIN = State()
+    CONFIGURATOR = State()
+    NAME = State()
+    CODE = State()
+    STATS = State()
 
 
 class RemnashopGateways(StatesGroup):
@@ -136,6 +168,13 @@ class RemnashopNotifications(StatesGroup):
     MAIN = State()
     USER = State()
     SYSTEM = State()
+    SYSTEM_TYPE = State()
+    SYSTEM_ROUTE = State()
+    SYSTEM_ROUTE_CHAT_ID = State()
+    SYSTEM_ROUTE_THREAD_ID = State()
+    SYSTEM_DEFAULT_ROUTE = State()
+    SYSTEM_DEFAULT_ROUTE_CHAT_ID = State()
+    SYSTEM_DEFAULT_ROUTE_THREAD_ID = State()
 
 
 class RemnashopPlans(StatesGroup):
@@ -167,6 +206,7 @@ class RemnashopMenuEditor(StatesGroup):
     AVAILABILITY = State()
     TYPE = State()
     PAYLOAD = State()
+    COLOR = State()
 
 
 class RemnashopSites(StatesGroup):
@@ -193,7 +233,10 @@ class DashboardImporter(StatesGroup):
     SYNC = State()
     SQUADS = State()
     IMPORT_COMPLETED = State()
-    SYNC_COMPLETED = State()
+    SYNC_PANEL = State()
+    SYNC_PANEL_COMPLETED = State()
+    SYNC_BOT = State()
+    SYNC_BOT_COMPLETED = State()
 
 
 def state_from_string(state_str: str, sep: Optional[str] = ":") -> Optional[State]:
