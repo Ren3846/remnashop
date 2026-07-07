@@ -1,11 +1,8 @@
-import re
 from typing import Any, Optional, TypedDict, cast
-from uuid import UUID
 
 from adaptix import Retort
 from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto, Message
 from aiogram_dialog import DialogManager, StartMode
-from aiogram_dialog.widgets.input import MessageInput
 from aiogram_dialog.widgets.kbd import Button, Select
 from dishka import AsyncContainer, FromDishka
 from dishka.integrations.aiogram_dialog import inject
@@ -16,8 +13,6 @@ from src.application.common.dao import PaymentGatewayDao, PlanDao, SettingsDao, 
 from src.application.dto import PlanDto, PlanSnapshotDto, SubscriptionDto, TelegramUserDto
 from src.application.services import PricingService
 from src.application.use_cases.gateways.commands.payment import (
-    CompletePaidPurchase,
-    CompletePaidPurchaseDto,
     CreatePayment,
     CreatePaymentDto,
     ProcessPayment,
@@ -25,16 +20,23 @@ from src.application.use_cases.gateways.commands.payment import (
 )
 from src.application.use_cases.plan.queries.match import MatchPlan, MatchPlanDto
 from src.application.use_cases.user.queries.plans import GetAvailablePlans
-from src.application.use_cases.user import SetUserEmail, SetUserEmailDto
 from src.core.constants import ASSETS_DIR, CONTAINER_KEY, PAYMENT_PREFIX, USER_KEY
 from src.core.enums import PaymentGatewayType, PurchaseType, TransactionStatus
+from src.telegram.routers.common.email_handlers import (
+    on_link_email_input,
+    redirect_if_email_required,
+)
 from src.telegram.states import MainMenu, Subscription
-
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 async def on_subscription_start(start_data: Any, manager: DialogManager) -> None:
     if not start_data or "trial_plan" not in start_data:
+        return
+
+    user: TelegramUserDto = manager.middleware_data[USER_KEY]
+    if await redirect_if_email_required(manager, user.email, email_after="subscription"):
+        manager.dialog_data["trial_plan"] = start_data["trial_plan"]
+        manager.dialog_data["trial_duration"] = start_data["trial_duration"]
         return
 
     manager.dialog_data[PlanDto.__name__] = start_data["trial_plan"]
@@ -168,6 +170,10 @@ async def on_subscription_dialog_start(start_data: Any, manager: DialogManager) 
     if not start_data or not start_data.get("auto_buy"):
         return
 
+    user: TelegramUserDto = manager.middleware_data[USER_KEY]
+    if await redirect_if_email_required(manager, user.email, email_after="subscription"):
+        return
+
     container: AsyncContainer = manager.middleware_data[CONTAINER_KEY]
     user: TelegramUserDto = manager.middleware_data[USER_KEY]
 
@@ -196,40 +202,7 @@ async def _switch_to_confirm(dialog_manager: DialogManager) -> None:
     await dialog_manager.switch_to(state=Subscription.CONFIRM)
 
 
-@inject
-async def on_email_input(
-    message: Message,
-    widget: MessageInput,
-    dialog_manager: DialogManager,
-    set_user_email: FromDishka[SetUserEmail],
-    complete_paid_purchase: FromDishka[CompletePaidPurchase],
-    notifier: FromDishka[Notifier],
-) -> None:
-    user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
-    email = (message.text or "").strip()
-
-    if not _EMAIL_RE.match(email):
-        await notifier.notify_user(user=user, i18n_key="ntf-subscription.invalid-email")
-        return
-
-    start_data = cast(dict[str, Any], dialog_manager.start_data or {})
-    payment_id_str = start_data.get("payment_id")
-    if not payment_id_str:
-        logger.error(f"{user.log} Email input without pending payment_id")
-        await notifier.notify_user(user, i18n_key="ntf-subscription.payment-creation-failed")
-        return
-
-    await set_user_email(user, SetUserEmailDto(telegram_id=user.telegram_id, email=email))
-    user.email = email
-
-    try:
-        await complete_paid_purchase.system(
-            CompletePaidPurchaseDto(payment_id=UUID(payment_id_str))
-        )
-    except Exception:
-        logger.exception(f"{user.log} Failed to activate subscription after email input")
-        await notifier.notify_user(user, i18n_key="ntf-subscription.payment-creation-failed")
-        raise
+on_email_input = on_link_email_input
 
 
 @inject
@@ -295,6 +268,9 @@ async def on_subscription_plans(  # noqa: C901
 ) -> None:
     user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
     logger.info(f"{user.log} Opened subscription plans menu")
+
+    if await redirect_if_email_required(dialog_manager, user.email, email_after="subscription"):
+        return
 
     plans: list[PlanDto] = await get_available_plans.system(user)
     gateways = await payment_gateway_dao.get_active()

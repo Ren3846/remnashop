@@ -10,6 +10,7 @@ from src.core.constants import INLINE_QUERY_INVITE, PAYMENT_PREFIX
 from src.core.enums import BannerName
 from src.telegram.keyboards import build_buttons_row, connect_buttons
 from src.telegram.routers.dashboard.handlers import on_smart_search
+from src.telegram.routers.common.email_handlers import on_link_email_input
 from src.telegram.states import Dashboard, MainMenu, Subscription
 from src.telegram.utils import require_permission
 from src.telegram.widgets import Banner, I18nFormat, IgnoreUpdate
@@ -90,6 +91,15 @@ menu = Window(
             on_click=on_get_trial,
             when=F["trial_available"] & ~F["trial_is_free"],
             style=Style(ButtonStyle.SUCCESS),
+        ),
+    ),
+    Row(
+        SwitchTo(
+            text=I18nFormat("btn-menu.link-email"),
+            id="link_email",
+            state=MainMenu.LINK_EMAIL,
+            when=~F["has_email"],
+            style=Style(ButtonStyle.PRIMARY),
         ),
     ),
     Row(
@@ -357,6 +367,22 @@ device_confirm_reissue = Window(
 HAPP_ANDROID_URL = "https://play.google.com/store/apps/details?id=com.happproxy"
 HAPP_IOS_URL = "https://apps.apple.com/ua/app/happ-proxy-utility/id6504287215"
 
+link_email = Window(
+    Banner(BannerName.MENU),
+    I18nFormat("msg-subscription-email"),
+    MessageInput(func=on_link_email_input),
+    Row(
+        SwitchTo(
+            text=I18nFormat("btn-back.general"),
+            id="back_menu",
+            state=MainMenu.MAIN,
+        ),
+    ),
+    IgnoreUpdate(),
+    state=MainMenu.LINK_EMAIL,
+    getter=menu_getter,
+)
+
 connect_guide = Window(
     Banner(BannerName.MENU),
     I18nFormat("msg-menu-connect-guide"),
@@ -394,6 +420,7 @@ connect_guide = Window(
 
 router = Dialog(
     menu,
+    link_email,
     devices,
     device_confirm_delete,
     device_confirm_delete_all,

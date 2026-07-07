@@ -47,6 +47,14 @@ class Remnawave(Protocol):
 
     async def get_users_by_email(self, email: str) -> List[UserResponseDto]: ...
 
+    async def link_identity(
+        self,
+        uuid: UUID,
+        *,
+        telegram_id: Optional[int] = None,
+        email: Optional[str] = None,
+    ) -> UserResponseDto: ...
+
     async def get_all_users(self, limit: int, offset: int) -> List[UserResponseDto]: ...
 
     async def get_devices(self, uuid: UUID) -> List[HwidDeviceDto]: ...

@@ -11,6 +11,7 @@ from .commands.blocking import (
     UnblockAllUsers,
 )
 from .commands.messaging import SendMessageToUser
+from .commands.link_email import LinkUserEmail, LinkUserEmailDto
 from .commands.profile_edit import (
     ChangeUserPoints,
     ResetOwnReferralCode,
@@ -45,6 +46,9 @@ USER_USE_CASES: Final[tuple[type[Interactor], ...]] = (
     GetUserProfileSubscription,
     GetUserDevices,
     GetAvailablePlans,
+    GetAvailableTrial,
+    GetAvailablePlanByCode,
+    LinkUserEmail,
     SetUserEmail,
     SetUserPersonalDiscount,
     SetUserPurchaseDiscount,
@@ -53,8 +57,6 @@ USER_USE_CASES: Final[tuple[type[Interactor], ...]] = (
     ResetOwnReferralCode,
     ResetUserReferralCode,
     SendMessageToUser,
-    GetAvailableTrial,
-    GetAvailablePlanByCode,
     UpdateUserProfile,
     RegisterWebUser,
     TrackUserActivity,

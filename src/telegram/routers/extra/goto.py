@@ -159,6 +159,21 @@ async def on_goto_invite(
         )
 
 
+@router.message(CommandStart(deep_link=True, ignore_case=True), F.text.contains(Deeplink.LINK))
+async def on_goto_link(
+    message: Message,
+    user: TelegramUserDto,
+    dialog_manager: DialogManager,
+) -> None:
+    logger.info(f"{user.log} Redirected to email linking after landing purchase")
+    await dialog_manager.start(
+        state=MainMenu.LINK_EMAIL,
+        data={"email_after": "landing"},
+        mode=StartMode.RESET_STACK,
+        show_mode=ShowMode.DELETE_AND_SEND,
+    )
+
+
 @inject
 @router.message(
     CommandStart(deep_link=True, ignore_case=True),

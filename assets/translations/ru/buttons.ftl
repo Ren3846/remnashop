@@ -79,6 +79,7 @@ btn-menu =
     .support = 🆘 Поддержка
     .web-cabinet = 🌐 Личный кабинет
     .dashboard = 🛠 Панель управления
+    .link-email = ✉️ Указать email
 
     .connect-not-available =
     ⚠️ { $status ->

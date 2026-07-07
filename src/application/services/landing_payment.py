@@ -231,8 +231,8 @@ class LandingPaymentService:
                         "<p>Нажмите на ссылку — приложение откроется автоматически:</p>"
                         f"<p><a href='{subscription_url}'>{subscription_url}</a></p>"
                         f"<p>Срок действия: <b>{days} дней</b></p>"
-                        "<p>Также вы можете открыть Telegram-бот "
-                        "<a href='https://t.me/vepen_bot'>@vepen_bot</a>.</p>"
+                        "<p>Также откройте Telegram-бот и укажите тот же email для привязки:</p>"
+                        "<p><a href='https://t.me/vepen_bot?start=link'>@vepen_bot</a></p>"
                     ),
                 },
             )

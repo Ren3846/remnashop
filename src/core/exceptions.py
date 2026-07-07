@@ -83,3 +83,9 @@ class EmailDeliveryError(Exception): ...
 
 
 class EmailDeliveryDisabledError(Exception): ...
+
+
+class EmailAlreadyUsedError(Exception):
+    def __init__(self, email: str) -> None:
+        self.email = email
+        super().__init__(f"Email '{email}' is already linked to another account")

@@ -9,6 +9,7 @@ from src.application.common.dao import SettingsDao, UserDao
 from src.application.common.policy import Permission
 from src.application.common.uow import UnitOfWork
 from src.application.dto import UserDto
+from src.application.use_cases.user.commands.link_email import LinkUserEmail, LinkUserEmailDto
 from src.core.exceptions import CooldownError, PermissionDeniedError
 from src.core.utils.time import datetime_now
 
@@ -19,24 +20,14 @@ class SetUserEmailDto:
     email: str
 
 
-class SetUserEmail(Interactor[SetUserEmailDto, None]):
+class SetUserEmail(Interactor[SetUserEmailDto, UserDto]):
     required_permission = Permission.PUBLIC
 
-    def __init__(self, uow: UnitOfWork, user_dao: UserDao):
-        self.uow = uow
-        self.user_dao = user_dao
+    def __init__(self, link_user_email: LinkUserEmail) -> None:
+        self.link_user_email = link_user_email
 
-    async def _execute(self, actor: UserDto, data: SetUserEmailDto) -> None:
-        async with self.uow:
-            user = await self.user_dao.get_by_telegram_id(data.telegram_id)
-            if not user:
-                raise ValueError(f"User '{data.telegram_id}' not found")
-
-            user.email = data.email
-            await self.user_dao.update(user)
-            await self.uow.commit()
-
-        logger.info(f"{actor.log} Email set to '{data.email}'")
+    async def _execute(self, actor: UserDto, data: SetUserEmailDto) -> UserDto:
+        return await self.link_user_email(actor, LinkUserEmailDto(**data.__dict__))
 
 
 @dataclass(frozen=True)

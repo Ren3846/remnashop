@@ -175,10 +175,29 @@ class RemnawaveImpl(Remnawave):
         logger.debug(f"Fetched {len(response.users)} RemnaUsers (limit={limit}, offset={offset})")
         return response.users
 
-    async def get_user_by_email(self, email: str) -> list[UserResponseDto]:
+    async def get_users_by_email(self, email: str) -> list[UserResponseDto]:
         response = await self.sdk.users.get_users_by_email(email)
         logger.debug(f"Fetched {len(response.root)} RemnaUsers for email '{email}'")
         return response.root
+
+    async def link_identity(
+        self,
+        uuid: UUID,
+        *,
+        telegram_id: Optional[int] = None,
+        email: Optional[str] = None,
+    ) -> UserResponseDto:
+        payload: dict[str, object] = {"uuid": uuid}
+        if telegram_id is not None:
+            payload["telegram_id"] = telegram_id
+        if email is not None:
+            payload["email"] = email
+
+        remna_user = await self.sdk.users.update_user(UpdateUserRequestDto(**payload))
+        logger.info(
+            f"RemnaUser '{uuid}' identity linked: telegram_id={telegram_id}, email={email!r}"
+        )
+        return remna_user
 
     async def get_devices(self, user_uuid: UUID) -> list[HwidDeviceDto]:
         response = await self.sdk.hwid.get_hwid_user(user_uuid)

@@ -48,6 +48,7 @@ async def menu_getter(
             # user
             "telegram_id": user.telegram_id,
             "email": user.email,
+            "has_email": bool(user.email),
             "name": user.name,
             "personal_discount": personal_discount,
             "show_personal_discount": show_personal_discount,

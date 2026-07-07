@@ -39,6 +39,11 @@ from src.core.exceptions import CooldownError
 from src.core.utils.i18n_helpers import i18n_format_expire_time
 from src.core.utils.time import get_traffic_reset_delta
 from src.telegram.keyboards import CALLBACK_CHANNEL_CONFIRM, CALLBACK_RULES_ACCEPT
+from src.telegram.routers.common.email_handlers import (
+    on_link_email_input,
+    redirect_if_email_required,
+    should_prompt_email_on_start,
+)
 from src.telegram.states import MainMenu, Subscription
 
 router = Router(name=__name__)
@@ -46,6 +51,14 @@ router = Router(name=__name__)
 
 async def on_start_dialog(user: TelegramUserDto, dialog_manager: DialogManager) -> None:
     logger.info(f"{user.log} Started dialog")
+    if should_prompt_email_on_start(user):
+        await dialog_manager.start(
+            state=MainMenu.LINK_EMAIL,
+            data={"email_after": "menu"},
+            mode=StartMode.RESET_STACK,
+            show_mode=ShowMode.DELETE_AND_SEND,
+        )
+        return
     await dialog_manager.start(
         state=MainMenu.MAIN,
         mode=StartMode.RESET_STACK,
@@ -107,6 +120,14 @@ async def on_get_trial(
     settings_dao: FromDishka[SettingsDao],
 ) -> None:
     user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
+    if await redirect_if_email_required(
+        dialog_manager,
+        user.email,
+        email_after="trial",
+        email_state=MainMenu.LINK_EMAIL,
+    ):
+        return
+
     plan = await get_available_trial.system(user)
 
     if not plan:
