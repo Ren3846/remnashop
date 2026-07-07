@@ -12,6 +12,7 @@ class MainMenu(StatesGroup):
     INVITE = State()
     INVITE_ABOUT = State()
     CONNECT_GUIDE = State()
+    LINK_EMAIL = State()
 
 
 class Notification(StatesGroup):
