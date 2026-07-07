@@ -52,208 +52,294 @@ def _cleanup_orphans() -> None:
             log.warning("0026: deleted %s orphan row(s) from %s", result.rowcount, table)
 
 
+def _column_exists(table: str, column: str) -> bool:
+    bind = op.get_bind()
+    return (
+        bind.execute(
+            sa.text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = :table "
+                "AND column_name = :column"
+            ),
+            {"table": table, "column": column},
+        ).first()
+        is not None
+    )
+
+
+def _index_exists(name: str) -> bool:
+    bind = op.get_bind()
+    return (
+        bind.execute(
+            sa.text("SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = :name"),
+            {"name": name},
+        ).first()
+        is not None
+    )
+
+
+def _table_exists(table: str) -> bool:
+    bind = op.get_bind()
+    return (
+        bind.execute(
+            sa.text(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema = 'public' AND table_name = :table"
+            ),
+            {"table": table},
+        ).first()
+        is not None
+    )
+
+
 def upgrade() -> None:
     _cleanup_orphans()
 
-    # users: web auth fields
-    op.add_column("users", sa.Column("email", sa.String(length=255), nullable=True))
-    op.add_column("users", sa.Column("password_hash", sa.String(length=512), nullable=True))
-    op.create_index("ix_users_email", "users", ["email"], unique=True)
-    op.add_column(
-        "users",
-        sa.Column(
-            "is_email_verified",
-            sa.Boolean(),
-            nullable=False,
-            server_default=sa.false(),
-        ),
-    )
-    op.alter_column("users", "is_email_verified", server_default=None)
-    op.add_column("users", sa.Column("pending_email", sa.String(length=255), nullable=True))
-    op.add_column(
-        "users",
-        sa.Column("email_verification_code_hash", sa.String(length=128), nullable=True),
-    )
-    op.add_column(
-        "users",
-        sa.Column("email_verification_expires_at", sa.DateTime(timezone=True), nullable=True),
-    )
+    # users: web auth fields (email may already exist from VEPEN migration a023)
+    if not _column_exists("users", "email"):
+        op.add_column("users", sa.Column("email", sa.String(length=255), nullable=True))
+    else:
+        bind = op.get_bind()
+        length = bind.execute(
+            sa.text(
+                "SELECT character_maximum_length FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = 'users' "
+                "AND column_name = 'email'"
+            )
+        ).scalar()
+        if length is not None and length < 255:
+            op.alter_column(
+                "users",
+                "email",
+                existing_type=sa.String(length=length),
+                type_=sa.String(length=255),
+                existing_nullable=True,
+            )
+
+    if not _column_exists("users", "password_hash"):
+        op.add_column("users", sa.Column("password_hash", sa.String(length=512), nullable=True))
+
+    if not _index_exists("ix_users_email"):
+        op.create_index("ix_users_email", "users", ["email"], unique=True)
+
+    if not _column_exists("users", "is_email_verified"):
+        op.add_column(
+            "users",
+            sa.Column(
+                "is_email_verified",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.false(),
+            ),
+        )
+        op.alter_column("users", "is_email_verified", server_default=None)
+
+    if not _column_exists("users", "pending_email"):
+        op.add_column("users", sa.Column("pending_email", sa.String(length=255), nullable=True))
+
+    if not _column_exists("users", "email_verification_code_hash"):
+        op.add_column(
+            "users",
+            sa.Column("email_verification_code_hash", sa.String(length=128), nullable=True),
+        )
+
+    if not _column_exists("users", "email_verification_expires_at"):
+        op.add_column(
+            "users",
+            sa.Column("email_verification_expires_at", sa.DateTime(timezone=True), nullable=True),
+        )
 
     # users: auth_type, telegram_id becomes nullable
     op.alter_column("users", "telegram_id", existing_type=sa.BigInteger(), nullable=True)
-    op.add_column(
-        "users",
-        sa.Column("auth_type", sa.String(length=20), nullable=False, server_default="telegram"),
-    )
-    op.alter_column("users", "auth_type", server_default=None)
+
+    if not _column_exists("users", "auth_type"):
+        op.add_column(
+            "users",
+            sa.Column("auth_type", sa.String(length=20), nullable=False, server_default="telegram"),
+        )
+        op.alter_column("users", "auth_type", server_default=None)
 
     # user_oauth_providers table
-    op.create_table(
-        "user_oauth_providers",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column("provider", sa.String(length=32), nullable=False),
-        sa.Column("provider_id", sa.String(length=255), nullable=False),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.timezone("UTC", sa.func.now()),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.timezone("UTC", sa.func.now()),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("user_id", "provider", name="uq_user_oauth_providers_user_provider"),
-        sa.UniqueConstraint("provider", "provider_id", name="uq_user_oauth_providers_provider_id"),
-    )
-    op.create_index("ix_user_oauth_providers_user_id", "user_oauth_providers", ["user_id"])
+    if not _table_exists("user_oauth_providers"):
+        op.create_table(
+            "user_oauth_providers",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("user_id", sa.Integer(), nullable=False),
+            sa.Column("provider", sa.String(length=32), nullable=False),
+            sa.Column("provider_id", sa.String(length=255), nullable=False),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.func.timezone("UTC", sa.func.now()),
+                nullable=False,
+            ),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.func.timezone("UTC", sa.func.now()),
+                nullable=False,
+            ),
+            sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint(
+                "user_id", "provider", name="uq_user_oauth_providers_user_provider"
+            ),
+            sa.UniqueConstraint(
+                "provider", "provider_id", name="uq_user_oauth_providers_provider_id"
+            ),
+        )
+        op.create_index("ix_user_oauth_providers_user_id", "user_oauth_providers", ["user_id"])
 
     # transactions
-    op.add_column("transactions", sa.Column("user_id", sa.Integer(), nullable=True))
-    op.execute("""
-        UPDATE transactions t
-        SET user_id = u.id
-        FROM users u
-        WHERE u.telegram_id = t.user_telegram_id
-    """)
-    op.alter_column("transactions", "user_id", nullable=False)
-    op.drop_constraint(
-        op.f("transactions_user_telegram_id_fkey"), "transactions", type_="foreignkey"
-    )
-    op.drop_index("ix_transactions_user_telegram_id", table_name="transactions")
-    op.drop_column("transactions", "user_telegram_id")
-    op.create_index("ix_transactions_user_id", "transactions", ["user_id"], unique=False)
-    op.create_foreign_key(
-        op.f("transactions_user_id_fkey"),
-        "transactions",
-        "users",
-        ["user_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
+    if not _column_exists("transactions", "user_id"):
+        op.add_column("transactions", sa.Column("user_id", sa.Integer(), nullable=True))
+        op.execute("""
+            UPDATE transactions t
+            SET user_id = u.id
+            FROM users u
+            WHERE u.telegram_id = t.user_telegram_id
+        """)
+        op.alter_column("transactions", "user_id", nullable=False)
+        op.drop_constraint(
+            op.f("transactions_user_telegram_id_fkey"), "transactions", type_="foreignkey"
+        )
+        op.drop_index("ix_transactions_user_telegram_id", table_name="transactions")
+        op.drop_column("transactions", "user_telegram_id")
+        op.create_index("ix_transactions_user_id", "transactions", ["user_id"], unique=False)
+        op.create_foreign_key(
+            op.f("transactions_user_id_fkey"),
+            "transactions",
+            "users",
+            ["user_id"],
+            ["id"],
+            ondelete="CASCADE",
+        )
 
     # subscriptions
-    op.add_column("subscriptions", sa.Column("user_id", sa.Integer(), nullable=True))
-    op.execute("""
-        UPDATE subscriptions s
-        SET user_id = u.id
-        FROM users u
-        WHERE u.telegram_id = s.user_telegram_id
-    """)
-    op.alter_column("subscriptions", "user_id", nullable=False)
-    op.drop_constraint(
-        op.f("subscriptions_user_telegram_id_fkey"), "subscriptions", type_="foreignkey"
-    )
-    op.drop_index("ix_subscriptions_user_telegram_id", table_name="subscriptions")
-    op.drop_column("subscriptions", "user_telegram_id")
-    op.create_index("ix_subscriptions_user_id", "subscriptions", ["user_id"], unique=False)
-    op.create_foreign_key(
-        op.f("subscriptions_user_id_fkey"),
-        "subscriptions",
-        "users",
-        ["user_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
+    if not _column_exists("subscriptions", "user_id"):
+        op.add_column("subscriptions", sa.Column("user_id", sa.Integer(), nullable=True))
+        op.execute("""
+            UPDATE subscriptions s
+            SET user_id = u.id
+            FROM users u
+            WHERE u.telegram_id = s.user_telegram_id
+        """)
+        op.alter_column("subscriptions", "user_id", nullable=False)
+        op.drop_constraint(
+            op.f("subscriptions_user_telegram_id_fkey"), "subscriptions", type_="foreignkey"
+        )
+        op.drop_index("ix_subscriptions_user_telegram_id", table_name="subscriptions")
+        op.drop_column("subscriptions", "user_telegram_id")
+        op.create_index("ix_subscriptions_user_id", "subscriptions", ["user_id"], unique=False)
+        op.create_foreign_key(
+            op.f("subscriptions_user_id_fkey"),
+            "subscriptions",
+            "users",
+            ["user_id"],
+            ["id"],
+            ondelete="CASCADE",
+        )
 
     # referrals
-    op.add_column("referrals", sa.Column("referrer_id", sa.Integer(), nullable=True))
-    op.add_column("referrals", sa.Column("referred_id", sa.Integer(), nullable=True))
-    op.execute("""
-        UPDATE referrals r
-        SET referrer_id = u.id
-        FROM users u
-        WHERE u.telegram_id = r.referrer_telegram_id
-    """)
-    op.execute("""
-        UPDATE referrals r
-        SET referred_id = u.id
-        FROM users u
-        WHERE u.telegram_id = r.referred_telegram_id
-    """)
-    op.alter_column("referrals", "referrer_id", nullable=False)
-    op.alter_column("referrals", "referred_id", nullable=False)
-    op.drop_constraint(op.f("referrals_referrer_telegram_id_fkey"), "referrals", type_="foreignkey")
-    op.drop_constraint(op.f("referrals_referred_telegram_id_fkey"), "referrals", type_="foreignkey")
-    op.drop_index("ix_referrals_referrer_telegram_id", table_name="referrals")
-    op.drop_index("ix_referrals_referred_telegram_id", table_name="referrals")
-    op.drop_column("referrals", "referrer_telegram_id")
-    op.drop_column("referrals", "referred_telegram_id")
-    op.create_index("ix_referrals_referrer_id", "referrals", ["referrer_id"], unique=False)
-    op.create_index("ix_referrals_referred_id", "referrals", ["referred_id"], unique=True)
-    op.create_foreign_key(
-        op.f("referrals_referrer_id_fkey"),
-        "referrals",
-        "users",
-        ["referrer_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
-    op.create_foreign_key(
-        op.f("referrals_referred_id_fkey"),
-        "referrals",
-        "users",
-        ["referred_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
+    if not _column_exists("referrals", "referrer_id"):
+        op.add_column("referrals", sa.Column("referrer_id", sa.Integer(), nullable=True))
+        op.add_column("referrals", sa.Column("referred_id", sa.Integer(), nullable=True))
+        op.execute("""
+            UPDATE referrals r
+            SET referrer_id = u.id
+            FROM users u
+            WHERE u.telegram_id = r.referrer_telegram_id
+        """)
+        op.execute("""
+            UPDATE referrals r
+            SET referred_id = u.id
+            FROM users u
+            WHERE u.telegram_id = r.referred_telegram_id
+        """)
+        op.alter_column("referrals", "referrer_id", nullable=False)
+        op.alter_column("referrals", "referred_id", nullable=False)
+        op.drop_constraint(
+            op.f("referrals_referrer_telegram_id_fkey"), "referrals", type_="foreignkey"
+        )
+        op.drop_constraint(
+            op.f("referrals_referred_telegram_id_fkey"), "referrals", type_="foreignkey"
+        )
+        op.drop_index("ix_referrals_referrer_telegram_id", table_name="referrals")
+        op.drop_index("ix_referrals_referred_telegram_id", table_name="referrals")
+        op.drop_column("referrals", "referrer_telegram_id")
+        op.drop_column("referrals", "referred_telegram_id")
+        op.create_index("ix_referrals_referrer_id", "referrals", ["referrer_id"], unique=False)
+        op.create_index("ix_referrals_referred_id", "referrals", ["referred_id"], unique=True)
+        op.create_foreign_key(
+            op.f("referrals_referrer_id_fkey"),
+            "referrals",
+            "users",
+            ["referrer_id"],
+            ["id"],
+            ondelete="CASCADE",
+        )
+        op.create_foreign_key(
+            op.f("referrals_referred_id_fkey"),
+            "referrals",
+            "users",
+            ["referred_id"],
+            ["id"],
+            ondelete="CASCADE",
+        )
 
     # referral_rewards
-    op.add_column("referral_rewards", sa.Column("user_id", sa.Integer(), nullable=True))
-    op.execute("""
-        UPDATE referral_rewards rr
-        SET user_id = u.id
-        FROM users u
-        WHERE u.telegram_id = rr.user_telegram_id
-    """)
-    op.alter_column("referral_rewards", "user_id", nullable=False)
-    op.drop_constraint(
-        op.f("referral_rewards_user_telegram_id_fkey"), "referral_rewards", type_="foreignkey"
-    )
-    op.drop_index("ix_referral_rewards_user_telegram_id", table_name="referral_rewards")
-    op.drop_column("referral_rewards", "user_telegram_id")
-    op.create_index("ix_referral_rewards_user_id", "referral_rewards", ["user_id"], unique=False)
-    op.create_foreign_key(
-        op.f("referral_rewards_user_id_fkey"),
-        "referral_rewards",
-        "users",
-        ["user_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
+    if not _column_exists("referral_rewards", "user_id"):
+        op.add_column("referral_rewards", sa.Column("user_id", sa.Integer(), nullable=True))
+        op.execute("""
+            UPDATE referral_rewards rr
+            SET user_id = u.id
+            FROM users u
+            WHERE u.telegram_id = rr.user_telegram_id
+        """)
+        op.alter_column("referral_rewards", "user_id", nullable=False)
+        op.drop_constraint(
+            op.f("referral_rewards_user_telegram_id_fkey"), "referral_rewards", type_="foreignkey"
+        )
+        op.drop_index("ix_referral_rewards_user_telegram_id", table_name="referral_rewards")
+        op.drop_column("referral_rewards", "user_telegram_id")
+        op.create_index("ix_referral_rewards_user_id", "referral_rewards", ["user_id"], unique=False)
+        op.create_foreign_key(
+            op.f("referral_rewards_user_id_fkey"),
+            "referral_rewards",
+            "users",
+            ["user_id"],
+            ["id"],
+            ondelete="CASCADE",
+        )
 
     # broadcast_messages
-    op.add_column("broadcast_messages", sa.Column("user_id", sa.Integer(), nullable=True))
-    op.execute("""
-        UPDATE broadcast_messages bm
-        SET user_id = u.id
-        FROM users u
-        WHERE u.telegram_id = bm.user_telegram_id
-    """)
-    op.alter_column("broadcast_messages", "user_id", nullable=False)
-    op.drop_index("ix_broadcast_messages_user_telegram_id", table_name="broadcast_messages")
-    op.create_index(
-        "ix_broadcast_messages_user_id", "broadcast_messages", ["user_id"], unique=False
-    )
-    op.create_foreign_key(
-        op.f("broadcast_messages_user_id_fkey"),
-        "broadcast_messages",
-        "users",
-        ["user_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
-    op.alter_column(
-        "broadcast_messages",
-        "user_telegram_id",
-        existing_type=sa.BigInteger(),
-        nullable=True,
-    )
+    if not _column_exists("broadcast_messages", "user_id"):
+        op.add_column("broadcast_messages", sa.Column("user_id", sa.Integer(), nullable=True))
+        op.execute("""
+            UPDATE broadcast_messages bm
+            SET user_id = u.id
+            FROM users u
+            WHERE u.telegram_id = bm.user_telegram_id
+        """)
+        op.alter_column("broadcast_messages", "user_id", nullable=False)
+        op.drop_index("ix_broadcast_messages_user_telegram_id", table_name="broadcast_messages")
+        op.create_index(
+            "ix_broadcast_messages_user_id", "broadcast_messages", ["user_id"], unique=False
+        )
+        op.create_foreign_key(
+            op.f("broadcast_messages_user_id_fkey"),
+            "broadcast_messages",
+            "users",
+            ["user_id"],
+            ["id"],
+            ondelete="CASCADE",
+        )
+        op.alter_column(
+            "broadcast_messages",
+            "user_telegram_id",
+            existing_type=sa.BigInteger(),
+            nullable=True,
+        )
 
 
 def downgrade() -> None:
