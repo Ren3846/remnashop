@@ -26,6 +26,7 @@ from .getters import (
 )
 from .handlers import (
     on_duration_select,
+    on_email_confirm_input,
     on_email_input,
     on_get_subscription,
     on_open_connect_guide_start,
@@ -211,6 +212,22 @@ email_input = Window(
     state=Subscription.EMAIL,
 )
 
+email_confirm = Window(
+    Banner(BannerName.SUBSCRIPTION),
+    I18nFormat("msg-subscription-email-confirm"),
+    MessageInput(func=on_email_confirm_input),
+    Row(
+        SwitchTo(
+            text=I18nFormat("btn-back.general"),
+            id="back_email",
+            state=Subscription.EMAIL,
+        ),
+    ),
+    *back_main_menu_button,
+    IgnoreUpdate(),
+    state=Subscription.LINK_EMAIL_CONFIRM,
+)
+
 confirm = Window(
     Banner(BannerName.SUBSCRIPTION),
     I18nFormat("msg-subscription-confirm"),
@@ -345,6 +362,7 @@ router = Dialog(
     duration,
     payment_method,
     email_input,
+    email_confirm,
     confirm,
     success_payment,
     success_trial,

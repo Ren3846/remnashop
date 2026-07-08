@@ -10,7 +10,7 @@ from src.core.constants import INLINE_QUERY_INVITE, PAYMENT_PREFIX
 from src.core.enums import BannerName
 from src.telegram.keyboards import build_buttons_row, connect_buttons
 from src.telegram.routers.dashboard.handlers import on_smart_search
-from src.telegram.routers.common.email_handlers import on_link_email_input
+from src.telegram.routers.common.email_handlers import on_confirm_email_input, on_link_email_input
 from src.telegram.states import Dashboard, MainMenu, Subscription
 from src.telegram.utils import require_permission
 from src.telegram.widgets import Banner, I18nFormat, IgnoreUpdate
@@ -383,6 +383,22 @@ link_email = Window(
     getter=menu_getter,
 )
 
+link_email_confirm = Window(
+    Banner(BannerName.MENU),
+    I18nFormat("msg-subscription-email-confirm"),
+    MessageInput(func=on_confirm_email_input),
+    Row(
+        SwitchTo(
+            text=I18nFormat("btn-back.general"),
+            id="back_link_email",
+            state=MainMenu.LINK_EMAIL,
+        ),
+    ),
+    IgnoreUpdate(),
+    state=MainMenu.LINK_EMAIL_CONFIRM,
+    getter=menu_getter,
+)
+
 connect_guide = Window(
     Banner(BannerName.MENU),
     I18nFormat("msg-menu-connect-guide"),
@@ -421,6 +437,7 @@ connect_guide = Window(
 router = Dialog(
     menu,
     link_email,
+    link_email_confirm,
     devices,
     device_confirm_delete,
     device_confirm_delete_all,

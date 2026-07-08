@@ -23,6 +23,7 @@ from src.application.use_cases.user.queries.plans import GetAvailablePlans
 from src.core.constants import ASSETS_DIR, CONTAINER_KEY, PAYMENT_PREFIX, USER_KEY
 from src.core.enums import PaymentGatewayType, PurchaseType, TransactionStatus
 from src.telegram.routers.common.email_handlers import (
+    on_confirm_email_input,
     on_link_email_input,
     redirect_if_email_required,
 )
@@ -34,7 +35,7 @@ async def on_subscription_start(start_data: Any, manager: DialogManager) -> None
         return
 
     user: TelegramUserDto = manager.middleware_data[USER_KEY]
-    if await redirect_if_email_required(manager, user.email, email_after="subscription"):
+    if await redirect_if_email_required(manager, user, email_after="subscription"):
         manager.dialog_data["trial_plan"] = start_data["trial_plan"]
         manager.dialog_data["trial_duration"] = start_data["trial_duration"]
         return
@@ -171,7 +172,7 @@ async def on_subscription_dialog_start(start_data: Any, manager: DialogManager) 
         return
 
     user: TelegramUserDto = manager.middleware_data[USER_KEY]
-    if await redirect_if_email_required(manager, user.email, email_after="subscription"):
+    if await redirect_if_email_required(manager, user, email_after="subscription"):
         return
 
     container: AsyncContainer = manager.middleware_data[CONTAINER_KEY]
@@ -203,6 +204,7 @@ async def _switch_to_confirm(dialog_manager: DialogManager) -> None:
 
 
 on_email_input = on_link_email_input
+on_email_confirm_input = on_confirm_email_input
 
 
 @inject
@@ -269,7 +271,7 @@ async def on_subscription_plans(  # noqa: C901
     user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
     logger.info(f"{user.log} Opened subscription plans menu")
 
-    if await redirect_if_email_required(dialog_manager, user.email, email_after="subscription"):
+    if await redirect_if_email_required(dialog_manager, user, email_after="subscription"):
         return
 
     plans: list[PlanDto] = await get_available_plans.system(user)

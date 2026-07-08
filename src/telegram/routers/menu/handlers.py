@@ -122,7 +122,7 @@ async def on_get_trial(
     user: TelegramUserDto = dialog_manager.middleware_data[USER_KEY]
     if await redirect_if_email_required(
         dialog_manager,
-        user.email,
+        user,
         email_after="trial",
         email_state=MainMenu.LINK_EMAIL,
     ):

@@ -1541,9 +1541,14 @@ msg-subscription-payment-method =
     }
 
 msg-subscription-email =
-    <b>✅ Оплата получена!</b>
+    <b>Введите ваш email-адрес.</b>
 
-    Введите ваш email-адрес. Он будет привязан к VPN-подписке в Remnawave.
+    Он будет привязан к VPN-подписке в Remnawave.
+
+msg-subscription-email-confirm =
+    <b>Введите код подтверждения из письма.</b>
+
+    Мы отправили 6-значный код на указанный email.
 
 msg-subscription-confirm =
     <b>🛒 Подтверждение { $purchase_type ->

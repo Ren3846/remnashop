@@ -13,6 +13,7 @@ class MainMenu(StatesGroup):
     INVITE_ABOUT = State()
     CONNECT_GUIDE = State()
     LINK_EMAIL = State()
+    LINK_EMAIL_CONFIRM = State()
 
 
 class Notification(StatesGroup):
@@ -28,6 +29,7 @@ class Subscription(StatesGroup):
     PAYMENT_METHOD = State()
     EMAIL = State()
     LINK_EMAIL = State()
+    LINK_EMAIL_CONFIRM = State()
     CONFIRM = State()
     SUCCESS = State()
     FAILED = State()
