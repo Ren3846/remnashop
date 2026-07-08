@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from aiogram.types import Message
 from aiogram_dialog import DialogManager
 from aiogram_dialog.widgets.input import MessageInput
+from dishka import FromDishka
 from dishka.integrations.aiogram_dialog import inject
 from loguru import logger
 
@@ -52,10 +53,10 @@ async def on_link_email_input(
     message: Message,
     widget: MessageInput,
     dialog_manager: DialogManager,
-    request_email_verification: RequestEmailVerification,
-    link_user_email: LinkUserEmail,
-    complete_paid_purchase: CompletePaidPurchase,
-    notifier: Notifier,
+    request_email_verification: FromDishka[RequestEmailVerification],
+    link_user_email: FromDishka[LinkUserEmail],
+    complete_paid_purchase: FromDishka[CompletePaidPurchase],
+    notifier: FromDishka[Notifier],
 ) -> None:
     user = dialog_manager.middleware_data[USER_KEY]
     email = (message.text or "").strip()
@@ -106,10 +107,10 @@ async def on_confirm_email_input(
     message: Message,
     widget: MessageInput,
     dialog_manager: DialogManager,
-    confirm_email_verification: ConfirmEmailVerification,
-    link_user_email: LinkUserEmail,
-    complete_paid_purchase: CompletePaidPurchase,
-    notifier: Notifier,
+    confirm_email_verification: FromDishka[ConfirmEmailVerification],
+    link_user_email: FromDishka[LinkUserEmail],
+    complete_paid_purchase: FromDishka[CompletePaidPurchase],
+    notifier: FromDishka[Notifier],
 ) -> None:
     user = dialog_manager.middleware_data[USER_KEY]
     code = (message.text or "").strip()
