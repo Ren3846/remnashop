@@ -37,7 +37,7 @@ from src.infrastructure.services import (
     PaymentNotificationDispatcherImpl,
     RedirectImpl,
     RemnawaveImpl,
-    SmtpEmailSender,
+    CompositeEmailSender,
     WebhookService,
     XuiDbReaderImpl,
 )
@@ -51,7 +51,7 @@ class ServicesProvider(Provider):
     landing_payment = provide(source=LandingPaymentService, scope=Scope.REQUEST)
     cryptographer = provide(source=CryptographerImpl, provides=Cryptographer)
     password_hasher = provide(source=PasswordHasherImpl, provides=PasswordHasher)
-    email_sender = provide(source=SmtpEmailSender, provides=EmailSender)
+    email_sender = provide(source=CompositeEmailSender, provides=EmailSender)
     http_client = provide(source=AiohttpClient, provides=HttpClient)
     redirect = provide(source=RedirectImpl, provides=Redirect)
     pricing = provide(source=PricingService)

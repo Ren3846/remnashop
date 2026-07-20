@@ -2,10 +2,12 @@ import asyncio
 import smtplib
 from email.message import EmailMessage
 
+from httpx import AsyncClient
 from loguru import logger
 
 from src.application.common.email_sender import EmailSender
 from src.core.config import AppConfig
+from src.core.config.mailgun import MailgunConfig
 from src.core.exceptions import EmailDeliveryError
 
 
@@ -59,3 +61,64 @@ class SmtpEmailSender(EmailSender):
                 client.ehlo()
             client.login(smtp_user, smtp_password)
             client.send_message(message)
+
+
+class MailgunEmailSender(EmailSender):
+    def __init__(self, config: AppConfig) -> None:
+        self._config = config
+
+    def _get_mailgun_config(self) -> MailgunConfig | None:
+        if self._config.mailgun is not None:
+            return self._config.mailgun
+
+        try:
+            return MailgunConfig()
+        except Exception:
+            return None
+
+    @property
+    def is_enabled(self) -> bool:
+        return self._get_mailgun_config() is not None
+
+    async def send(self, *, to: str, subject: str, body: str) -> None:
+        mailgun = self._get_mailgun_config()
+        if mailgun is None:
+            raise EmailDeliveryError("Mailgun is not configured")
+
+        try:
+            async with AsyncClient(timeout=10) as client:
+                response = await client.post(
+                    f"{mailgun.base_url}/v3/{mailgun.domain}/messages",
+                    auth=("api", mailgun.api_key.get_secret_value()),
+                    data={
+                        "from": mailgun.from_email,
+                        "to": to,
+                        "subject": subject,
+                        "text": body,
+                    },
+                )
+                response.raise_for_status()
+        except Exception as e:
+            logger.error(f"Failed to send email to '{to}' via Mailgun: {e}")
+            raise EmailDeliveryError(
+                "Failed to send verification email. Please try again later."
+            ) from e
+
+
+class CompositeEmailSender(EmailSender):
+    def __init__(self, config: AppConfig) -> None:
+        self._smtp = SmtpEmailSender(config)
+        self._mailgun = MailgunEmailSender(config)
+
+    @property
+    def is_enabled(self) -> bool:
+        return self._smtp.is_enabled or self._mailgun.is_enabled
+
+    async def send(self, *, to: str, subject: str, body: str) -> None:
+        if self._mailgun.is_enabled:
+            await self._mailgun.send(to=to, subject=subject, body=body)
+            return
+        if self._smtp.is_enabled:
+            await self._smtp.send(to=to, subject=subject, body=body)
+            return
+        raise EmailDeliveryError("Email delivery is not configured")
