@@ -73,7 +73,8 @@ class MailgunEmailSender(EmailSender):
 
         try:
             return MailgunConfig()
-        except Exception:
+        except Exception as exc:
+            logger.warning(f"Mailgun is not configured: {exc}")
             return None
 
     @property
