@@ -31,9 +31,10 @@ from src.application.use_cases.subscription.commands.purchase import (
     ActivateTrialSubscription,
     ActivateTrialSubscriptionDto,
 )
+from src.application.use_cases.subscription.commands.sync import SyncSubscriptionFromRemnawave
 from src.application.use_cases.user.commands.profile_edit import ResetOwnReferralCode
 from src.application.use_cases.user.queries.plans import GetAvailableTrial
-from src.core.constants import USER_KEY
+from src.core.constants import CONTAINER_KEY, USER_KEY
 from src.core.enums import MediaType
 from src.core.exceptions import CooldownError
 from src.core.utils.i18n_helpers import i18n_format_expire_time
@@ -49,8 +50,29 @@ from src.telegram.states import MainMenu, Subscription
 router = Router(name=__name__)
 
 
+async def _import_panel_subscription_if_needed(
+    user: TelegramUserDto,
+    dialog_manager: DialogManager,
+) -> None:
+    """Pull an externally created Remnawave subscription into the bot DB on /start."""
+    container = dialog_manager.middleware_data.get(CONTAINER_KEY)
+    if container is None:
+        return
+
+    subscription_dao = await container.get(SubscriptionDao)
+    if await subscription_dao.get_current(user.id):
+        return
+
+    try:
+        sync = await container.get(SyncSubscriptionFromRemnawave)
+        await sync.system(user.id)
+    except Exception:
+        logger.exception(f"{user.log} Failed to import subscription from Remnawave on start")
+
+
 async def on_start_dialog(user: TelegramUserDto, dialog_manager: DialogManager) -> None:
     logger.info(f"{user.log} Started dialog")
+    await _import_panel_subscription_if_needed(user, dialog_manager)
     if should_prompt_email_on_start(user):
         await dialog_manager.start(
             state=MainMenu.LINK_EMAIL,
