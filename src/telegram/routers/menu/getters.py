@@ -5,8 +5,6 @@ from dishka import FromDishka
 from dishka.integrations.aiogram_dialog import inject
 from loguru import logger
 
-from remnapy.utils.happ_crypt import create_happ_crypto_link
-
 from src.application.common import BotService, Remnawave, TranslatorRunner
 from src.application.common.dao import ReferralDao, SettingsDao, SubscriptionDao, UserDao
 from src.application.dto import TelegramUserDto
@@ -130,7 +128,7 @@ async def menu_getter(
                 "connection_url": config.bot.mini_app_url
                 if isinstance(config.bot.mini_app_url, str)
                 else subscription.url,
-                "happ_link": create_happ_crypto_link(subscription.url),
+                "happ_link": subscription.url or "",
                 "subscription_url": subscription.url,
             }
         )

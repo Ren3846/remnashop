@@ -77,6 +77,12 @@ class RemnaWebhookService:
             await self._process_sync(event, remna_user)
             return
 
+        # Delete must not depend on current_subscription join — look up by remna uuid only.
+        if event == RemnaUserEvent.DELETED:
+            logger.debug(f"Executing deletion for RemnaUser '{remna_user.telegram_id}'")
+            await self._process_delete_subscription(remna_user)
+            return
+
         user = await self.user_dao.get_by_remna_uuid(remna_user.uuid)
         if not user:
             logger.warning(f"Local user not found for remna_uuid '{remna_user.uuid}'")
@@ -90,11 +96,7 @@ class RemnaWebhookService:
             )
             return
 
-        if event == RemnaUserEvent.DELETED:
-            logger.debug(f"Executing deletion for RemnaUser '{remna_user.telegram_id}'")
-            await self._process_delete_subscription(remna_user)
-
-        elif event in {
+        if event in {
             RemnaUserEvent.REVOKED,
             RemnaUserEvent.ENABLED,
             RemnaUserEvent.DISABLED,

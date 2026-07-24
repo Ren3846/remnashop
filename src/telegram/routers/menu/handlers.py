@@ -1,14 +1,12 @@
 from adaptix import Retort
 from aiogram import F, Router
 from aiogram.filters import CommandStart
-from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto, Message
+from aiogram.types import CallbackQuery, Message
 from aiogram_dialog import DialogManager, ShowMode, StartMode
 from aiogram_dialog.widgets.kbd import Button
 from dishka import FromDishka
 from dishka.integrations.aiogram_dialog import inject
 from loguru import logger
-
-from remnapy.utils.happ_crypt import create_happ_crypto_link
 
 from src.application.common import BotService, Notifier, Redirect, TranslatorRunner
 from src.application.common.dao import SettingsDao, SubscriptionDao
@@ -18,7 +16,6 @@ from src.application.dto import (
     PlanSnapshotDto,
     TelegramUserDto,
 )
-from src.core.constants import ASSETS_DIR
 from src.telegram.keyboards import get_welcome_keyboard
 from src.application.use_cases.referral.queries.code import GenerateReferralQr
 from src.application.use_cases.remnawave.commands.management import (
@@ -50,29 +47,25 @@ from src.telegram.states import MainMenu, Subscription
 router = Router(name=__name__)
 
 
-async def _import_panel_subscription_if_needed(
+async def _sync_panel_subscription(
     user: TelegramUserDto,
     dialog_manager: DialogManager,
 ) -> None:
-    """Pull an externally created Remnawave subscription into the bot DB on /start."""
+    """Import/update/revoke local subscription from Remnawave on /start."""
     container = dialog_manager.middleware_data.get(CONTAINER_KEY)
     if container is None:
-        return
-
-    subscription_dao = await container.get(SubscriptionDao)
-    if await subscription_dao.get_current(user.id):
         return
 
     try:
         sync = await container.get(SyncSubscriptionFromRemnawave)
         await sync.system(user.id)
     except Exception:
-        logger.exception(f"{user.log} Failed to import subscription from Remnawave on start")
+        logger.exception(f"{user.log} Failed to sync subscription from Remnawave on start")
 
 
 async def on_start_dialog(user: TelegramUserDto, dialog_manager: DialogManager) -> None:
     logger.info(f"{user.log} Started dialog")
-    await _import_panel_subscription_if_needed(user, dialog_manager)
+    await _sync_panel_subscription(user, dialog_manager)
     if should_prompt_email_on_start(user):
         await dialog_manager.start(
             state=MainMenu.LINK_EMAIL,
@@ -394,22 +387,11 @@ async def on_invite(
     return
 
 
-async def _send_instr_images(callback: CallbackQuery) -> None:
-    files = [ASSETS_DIR / f"instr{i}.jpg" for i in range(1, 4)]
-    existing = [f for f in files if f.exists()]
-    if not existing:
-        return
-    media = [InputMediaPhoto(media=FSInputFile(str(f))) for f in existing]
-    await callback.message.answer_media_group(media=media)
-
-
-@inject
 async def on_open_connect_guide(
     callback: CallbackQuery,
     widget: Button,
     dialog_manager: DialogManager,
 ) -> None:
-    await _send_instr_images(callback)
     await dialog_manager.switch_to(MainMenu.CONNECT_GUIDE)
 
 
@@ -427,17 +409,12 @@ async def on_send_happ_link(
         await callback.answer("Подписка не найдена", show_alert=True)
         return
 
-    happ_link = create_happ_crypto_link(subscription.url)
-    if not happ_link:
-        await callback.answer("Не удалось сгенерировать ссылку", show_alert=True)
-        return
-
     await callback.message.answer(
         "🔗 Ваша ссылка для подключения:",
         parse_mode="HTML",
     )
     await callback.message.answer(
-        f"<code>{happ_link}</code>",
+        f"<code>{subscription.url}</code>",
         parse_mode="HTML",
     )
     await callback.answer()

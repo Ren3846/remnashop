@@ -93,7 +93,10 @@ class SubscriptionDaoImpl(SubscriptionDao, BaseDaoImpl):
         stmt = (
             select(Subscription)
             .join(User, User.current_subscription_id == Subscription.id)
-            .where(User.id == user_id)
+            .where(
+                User.id == user_id,
+                Subscription.status != SubscriptionStatus.DELETED,
+            )
             .limit(1)
         )
         db_subscription = await self.session.scalar(stmt)

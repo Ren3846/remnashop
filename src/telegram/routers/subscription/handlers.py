@@ -1,7 +1,7 @@
 from typing import Any, Optional, TypedDict, cast
 
 from adaptix import Retort
-from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto, Message
+from aiogram.types import CallbackQuery, Message
 from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.kbd import Button, Select
 from dishka import AsyncContainer, FromDishka
@@ -20,7 +20,7 @@ from src.application.use_cases.gateways.commands.payment import (
 )
 from src.application.use_cases.plan.queries.match import MatchPlan, MatchPlanDto
 from src.application.use_cases.user.queries.plans import GetAvailablePlans
-from src.core.constants import ASSETS_DIR, CONTAINER_KEY, PAYMENT_PREFIX, USER_KEY
+from src.core.constants import CONTAINER_KEY, PAYMENT_PREFIX, USER_KEY
 from src.core.enums import PaymentGatewayType, PurchaseType, TransactionStatus
 from src.telegram.routers.common.email_handlers import (
     on_confirm_email_input,
@@ -543,9 +543,4 @@ async def on_open_connect_guide_start(
     widget: Button,
     dialog_manager: DialogManager,
 ) -> None:
-    files = [ASSETS_DIR / f"instr{i}.jpg" for i in range(1, 4)]
-    existing = [f for f in files if f.exists()]
-    if existing:
-        media = [InputMediaPhoto(media=FSInputFile(str(f))) for f in existing]
-        await callback.message.answer_media_group(media=media)
     await dialog_manager.start(MainMenu.CONNECT_GUIDE, mode=StartMode.RESET_STACK)
