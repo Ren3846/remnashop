@@ -373,15 +373,26 @@ class ProcessPayment(Interactor[ProcessPaymentDto, None]):
                 updated = await self.transaction_dao.transition_status(
                     payment_id,
                     TransactionStatus.COMPLETED,
-                    (TransactionStatus.PENDING, TransactionStatus.FAILED),
+                    (
+                        TransactionStatus.PENDING,
+                        TransactionStatus.FAILED,
+                        # Lava success can arrive after cancel_old() marked PENDING as CANCELED
+                        TransactionStatus.CANCELED,
+                    ),
                 )
                 if not updated:
-                    logger.warning(
-                        f"Completed transition did not match for '{payment_id}', "
-                        f"user '{user.remna_name}' — already transitioned"
-                    )
-                    return
-                await self.uow.commit()
+                    # Already COMPLETED — still try to activate (idempotent for stuck payments)
+                    if transaction.status == TransactionStatus.COMPLETED:
+                        await self.uow.commit()
+                    else:
+                        logger.warning(
+                            f"Completed transition did not match for '{payment_id}', "
+                            f"user '{user.remna_name}' — status={transaction.status}"
+                        )
+                        return
+                else:
+                    await self.uow.commit()
+                    transaction.status = TransactionStatus.COMPLETED
 
             elif new_status == TransactionStatus.REFUNDED:
                 updated = await self.transaction_dao.transition_status(
