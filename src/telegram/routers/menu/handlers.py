@@ -29,6 +29,10 @@ from src.application.use_cases.subscription.commands.purchase import (
     ActivateTrialSubscriptionDto,
 )
 from src.application.use_cases.subscription.commands.sync import SyncSubscriptionFromRemnawave
+from src.application.use_cases.gateways.commands.payment import (
+    CompletePaidPurchase,
+    CompletePaidPurchaseDto,
+)
 from src.application.use_cases.user.commands.profile_edit import ResetOwnReferralCode
 from src.application.use_cases.user.queries.plans import GetAvailableTrial
 from src.core.constants import CONTAINER_KEY, USER_KEY
@@ -55,6 +59,15 @@ async def _sync_panel_subscription(
     container = dialog_manager.middleware_data.get(CONTAINER_KEY)
     if container is None:
         return
+
+    try:
+        complete_paid = await container.get(CompletePaidPurchase)
+        pending_id = await complete_paid.find_pending_payment_id(user.id)
+        if pending_id:
+            logger.info(f"{user.log} Recovering pending paid purchase '{pending_id}' on start")
+            await complete_paid.system(CompletePaidPurchaseDto(payment_id=pending_id))
+    except Exception:
+        logger.exception(f"{user.log} Failed to recover pending paid purchase on start")
 
     try:
         sync = await container.get(SyncSubscriptionFromRemnawave)

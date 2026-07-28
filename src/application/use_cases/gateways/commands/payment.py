@@ -433,20 +433,9 @@ class ProcessPayment(Interactor[ProcessPaymentDto, None]):
             await self.notifier.notify_user(user, i18n_key="ntf-gateway.test-payment-confirmed")
             return
 
-    async def _handle_success(self, user: UserDto, transaction: TransactionDto) -> None:
-        if transaction.is_test:
-            await self.notifier.notify_user(user, i18n_key="ntf-gateway.test-payment-confirmed")
-            return
-
-        if not user.email:
-            if user.telegram_id is not None:
-                await self.redirect.to_post_payment_email(
-                    user.telegram_id,
-                    transaction.payment_id,
-                    transaction.purchase_type,
-                )
-            return
-
+        # Always activate after money is taken. Email is collected separately
+        # (before purchase in UI / on next /start) — gating here left users
+        # with COMPLETED payments and no subscription after dialog reset.
         await self._activate_paid_purchase(user, transaction)
 
     async def _activate_paid_purchase(self, user: UserDto, transaction: TransactionDto) -> None:
@@ -622,9 +611,9 @@ class CompletePaidPurchase(Interactor[CompletePaidPurchaseDto, None]):
 
             user = await self.user_dao.get_by_id(transaction.user_id)
 
-            if not user or not user.email:
+            if not user:
                 logger.warning(
-                    f"Paid purchase activation skipped: user '{transaction.user_id}' has no email"
+                    f"Paid purchase activation skipped: user '{transaction.user_id}' not found"
                 )
                 return
 
@@ -654,6 +643,23 @@ class CompletePaidPurchase(Interactor[CompletePaidPurchaseDto, None]):
             logger.info(
                 f"Paid purchase '{data.payment_id}' activated for user '{user.telegram_id}'"
             )
+
+    async def find_pending_payment_id(self, user_id: int) -> Optional[UUID]:
+        """COMPLETED NEW payment without a paid subscription yet (dialog reset recovery)."""
+        transactions = await self.transaction_dao.get_by_user(user_id)
+        subscription = await self.subscription_dao.get_current(user_id)
+
+        if subscription is not None and not subscription.is_trial:
+            return None
+
+        for transaction in transactions:
+            if (
+                transaction.is_completed
+                and not transaction.is_test
+                and transaction.purchase_type == PurchaseType.NEW
+            ):
+                return transaction.payment_id
+        return None
 
     async def _is_already_activated(self, transaction: TransactionDto, user: UserDto) -> bool:
         if transaction.purchase_type != PurchaseType.NEW:

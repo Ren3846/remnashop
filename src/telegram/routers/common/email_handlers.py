@@ -165,6 +165,11 @@ async def on_confirm_email_input(
         or dialog_manager.dialog_data.pop(EMAIL_PENDING_PAYMENT_KEY, None)
     )
 
+    if not payment_id_str:
+        pending_id = await complete_paid_purchase.find_pending_payment_id(user.id)
+        if pending_id:
+            payment_id_str = str(pending_id)
+
     if payment_id_str:
         try:
             await complete_paid_purchase.system(
