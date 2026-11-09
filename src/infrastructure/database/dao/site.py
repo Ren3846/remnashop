@@ -14,7 +14,9 @@ from .base import BaseDaoImpl
 
 class SiteDaoImpl(SiteDao, BaseDaoImpl):
     def __init__(self, session: AsyncSession, retort: Retort) -> None:
-        super().__init__(session, retort)
+        # Explicit call: ``super().__init__`` is swallowed by the Protocol base
+        # (``SiteDao``) and never reaches ``BaseDaoImpl``, leaving ``self.session`` unset.
+        BaseDaoImpl.__init__(self, session, retort)
 
     @staticmethod
     def _to_site_dto(model: Site) -> SiteDto:
