@@ -48,9 +48,9 @@ class ToggleSubscriptionStatus(Interactor[int, SubscriptionStatus]):
         async with self.uow:
             try:
                 if is_now_active:
-                    await self.remnawave.enable_user(subscription.user_remna_id)
+                    await self.remnawave.enable_user(subscription.remna_id)
                 else:
-                    await self.remnawave.disable_user(subscription.user_remna_id)
+                    await self.remnawave.disable_user(subscription.remna_id)
             except Exception as e:
                 logger.error(f"External API error for user '{user_id}' while toggling status: {e}")
                 raise
@@ -91,7 +91,7 @@ class DeleteSubscription(Interactor[int, None]):
 
         async with self.uow:
             try:
-                await self.remnawave.delete_user(subscription.user_remna_id)
+                await self.remnawave.delete_user(subscription.remna_id)
             except Exception as e:
                 logger.error(f"Failed to delete user {target_user.log} from remnapy: {e}")
                 raise
@@ -141,7 +141,7 @@ class UpdateTrafficLimit(Interactor[UpdateTrafficLimitDto, None]):
             await self.subscription_dao.update(subscription)
             await self.remnawave.update_user(
                 user=target_user,
-                uuid=subscription.user_remna_id,
+                remna_id=subscription.remna_id,
                 subscription=subscription,
             )
 
@@ -187,7 +187,7 @@ class UpdateDeviceLimit(Interactor[UpdateDeviceLimitDto, None]):
             await self.subscription_dao.update(subscription)
             await self.remnawave.update_user(
                 user=target_user,
-                uuid=subscription.user_remna_id,
+                remna_id=subscription.remna_id,
                 subscription=subscription,
             )
             await self.uow.commit()
@@ -239,7 +239,7 @@ class ToggleInternalSquad(Interactor[ToggleInternalSquadDto, None]):
             await self.subscription_dao.update(subscription)
             await self.remnawave.update_user(
                 user=target_user,
-                uuid=subscription.user_remna_id,
+                remna_id=subscription.remna_id,
                 subscription=subscription,
             )
             await self.uow.commit()
@@ -290,7 +290,7 @@ class ToggleExternalSquad(Interactor[ToggleExternalSquadDto, None]):
             await self.subscription_dao.update(subscription)
             await self.remnawave.update_user(
                 user=target_user,
-                uuid=subscription.user_remna_id,
+                remna_id=subscription.remna_id,
                 subscription=subscription,
             )
             await self.uow.commit()
@@ -338,7 +338,7 @@ class AddSubscriptionDuration(Interactor[AddSubscriptionDurationDto, None]):
             await self.subscription_dao.update(subscription)
             await self.remnawave.update_user(
                 user=target_user,
-                uuid=subscription.user_remna_id,
+                remna_id=subscription.remna_id,
                 subscription=subscription,
             )
 
@@ -396,7 +396,7 @@ class DisableTrialSubscription(Interactor[ChannelMemberEventDto, Optional[UserDt
 
         async with self.uow:
             try:
-                await self.remnawave_sdk.users.disable_user(subscription.user_remna_id)
+                await self.remnawave_sdk.users.disable_user(subscription.remna_id)
             except Exception as e:
                 logger.error(
                     f"Failed to disable trial in remnawave for user '{data.telegram_id}': {e}"
@@ -485,7 +485,7 @@ class EnableTrialSubscription(Interactor[ChannelMemberEventDto, Optional[UserDto
 
         async with self.uow:
             try:
-                await self.remnawave_sdk.users.enable_user(subscription.user_remna_id)
+                await self.remnawave_sdk.users.enable_user(subscription.remna_id)
             except Exception as e:
                 logger.error(
                     f"Failed to enable trial in remnawave for user '{data.telegram_id}': {e}"

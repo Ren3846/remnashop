@@ -13,7 +13,6 @@ from .payment_gateway import (
 from .plan import PlanDto, PlanDurationDto, PlanPriceDto, PlanSnapshotDto
 from .promocode import PromocodeActivationDto, PromocodeDto
 from .referral import ReferralDto, ReferralRewardDto, UserReferralStatsDto
-from .site import SiteDto, SiteKeywordDto, SiteSubdomainDto
 from .settings import (
     AccessSettingsDto,
     BackupSettingsDto,
@@ -30,6 +29,7 @@ from .settings import (
     SettingsDto,
     SystemNotificationRouteDto,
 )
+from .site import SiteDto, SiteKeywordDto, SiteSubdomainDto
 from .statistics import (
     GatewayStatsDto,
     PlanIncomeDto,
@@ -41,7 +41,12 @@ from .statistics import (
     UserPaymentStatsDto,
     UserStatisticsDto,
 )
-from .subscription import RemnaSubscriptionDto, SquadInfoDto, SubscriptionDto
+from .subscription import (
+    RemnaSubscriptionDto,
+    SquadInfoDto,
+    SubscriptionDto,
+    UnlinkedSubscriptionError,
+)
 from .transaction import PriceDetailsDto, TransactionDto
 from .user import TelegramUserDto, TempUserDto, UserDto, UserOAuthProviderDto
 
@@ -99,6 +104,7 @@ __all__ = [
     "RemnaSubscriptionDto",
     "SquadInfoDto",
     "SubscriptionDto",
+    "UnlinkedSubscriptionError",
     "PriceDetailsDto",
     "TransactionDto",
     "TelegramUserDto",

@@ -142,10 +142,14 @@ async def get_current_subscription(
     if not current_subscription:
         return None
 
-    remna_user = await remnawave.get_user_by_uuid(current_subscription.user_remna_id)
+    remna_user = await remnawave.get_user_by_id(current_subscription.user_remna_id)
 
     return SubscriptionInfoResponse(
-        user_remna_id=str(current_subscription.user_remna_id),
+        user_remna_id=(
+            str(current_subscription.user_remna_id)
+            if current_subscription.user_remna_id is not None
+            else ""
+        ),
         status=current_subscription.current_status.value,
         is_trial=current_subscription.is_trial,
         traffic_limit=current_subscription.traffic_limit,
@@ -155,8 +159,10 @@ async def get_current_subscription(
         url=current_subscription.url,
         plan_name=current_subscription.plan_snapshot.name,
         plan_duration_days=current_subscription.plan_snapshot.duration,
-        used_traffic_bytes=remna_user.used_traffic_bytes if remna_user else None,
-        lifetime_used_traffic_bytes=remna_user.lifetime_used_traffic_bytes if remna_user else None,
+        used_traffic_bytes=int(remna_user.used_traffic_bytes) if remna_user else None,
+        lifetime_used_traffic_bytes=(
+            int(remna_user.lifetime_used_traffic_bytes) if remna_user else None
+        ),
         online_at=remna_user.online_at if remna_user else None,
     )
 

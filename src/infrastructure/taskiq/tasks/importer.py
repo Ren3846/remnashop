@@ -33,6 +33,7 @@ async def import_exported_users_task(
         try:
             created_user = CreateUserRequestDto.model_validate(user)
             created_user.active_internal_squads = active_internal_squads
+            created_user.tag = created_user.tag or None  # 3.4 rejects an empty tag
             await remnawave_sdk.users.create_user(created_user)
             success_count += 1
         except BadRequestError as error:

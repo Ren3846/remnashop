@@ -1,9 +1,17 @@
 from datetime import timedelta
 from enum import StrEnum
+from typing import Final, Optional
 
 from loguru import logger
 from redis.asyncio import Redis
-from remnapy.models.webhook import HwidUserDeviceDto, NodeDto, TorrentBlockerReportDto
+from remnapy.models.webhook import (
+    HwidUserDeviceDto,
+    TorrentBlockerReportDto,
+    WebhookMetaDto,
+)
+from remnapy.models.webhook import (
+    WebhookNodeDto as NodeDto,
+)
 
 from src.application.common import BotService, EventPublisher
 from src.application.common.dao import SubscriptionDao, UserDao
@@ -66,7 +74,12 @@ class RemnaWebhookService:
         #
         self.sync_user = sync_user
 
-    async def handle_user_event(self, event: str, remna_user: RemnaUserDto) -> None:
+    async def handle_user_event(  # noqa: C901
+        self,
+        event: str,
+        remna_user: RemnaUserDto,
+        meta: Optional[WebhookMetaDto] = None,
+    ) -> None:
         logger.debug(f"Received user event '{event}'")
 
         if event == RemnaUserEvent.NOT_CONNECTED:
@@ -77,15 +90,15 @@ class RemnaWebhookService:
             await self._process_sync(event, remna_user)
             return
 
-        # Delete must not depend on current_subscription join — look up by remna uuid only.
+        # Delete must not depend on current_subscription join — look up by panel id only.
         if event == RemnaUserEvent.DELETED:
             logger.debug(f"Executing deletion for RemnaUser '{remna_user.telegram_id}'")
             await self._process_delete_subscription(remna_user)
             return
 
-        user = await self.user_dao.get_by_remna_uuid(remna_user.uuid)
+        user = await self.user_dao.get_by_remna_id(remna_user.id)
         if not user:
-            logger.warning(f"Local user not found for remna_uuid '{remna_user.uuid}'")
+            logger.warning(f"Local user not found for remna_id '{remna_user.id}'")
             return
 
         current_subscription = await self.subscription_dao.get_current(user.id)
@@ -94,6 +107,10 @@ class RemnaWebhookService:
                 f"Current subscription not found for '{user.remna_name}', "
                 f"status event '{event}' processing aborted"
             )
+            return
+
+        if event == RemnaUserEvent.EXPIRATION:
+            await self._process_expiration(user, current_subscription, remna_user, meta)
             return
 
         if event in {
@@ -119,7 +136,9 @@ class RemnaWebhookService:
             RemnaUserEvent.EXPIRES_IN_48_HOURS,
             RemnaUserEvent.EXPIRES_IN_24_HOURS,
         }:
-            await self._process_expiring(user, current_subscription, event, remna_user)
+            await self._process_expiring(
+                user, current_subscription, _LEGACY_EXPIRING_DAYS[event], event, remna_user
+            )
 
         elif event == RemnaUserEvent.FIRST_CONNECTED:
             await self.event_bus.publish(
@@ -130,7 +149,7 @@ class RemnaWebhookService:
                     name=user.name,
                     email=user.email,
                     is_trial=current_subscription.is_trial,
-                    subscription_id=remna_user.uuid,
+                    subscription_id=remna_user.id,
                     subscription_status=SubscriptionStatus(remna_user.status),
                     traffic_used=i18n_format_bytes_to_unit(
                         remna_user.used_traffic_bytes, min_unit=ByteUnitKey.MEGABYTE
@@ -146,11 +165,11 @@ class RemnaWebhookService:
     async def handle_device_event(
         self, event: str, remna_user: RemnaUserDto, device: HwidUserDeviceDto
     ) -> None:
-        logger.info(f"Received device event '{event}' for RemnaUser '{remna_user.uuid}'")
+        logger.info(f"Received device event '{event}' for RemnaUser '{remna_user.id}'")
 
-        user = await self.user_dao.get_by_remna_uuid(remna_user.uuid)
+        user = await self.user_dao.get_by_remna_id(remna_user.id)
         if not user:
-            logger.warning(f"Local user not found for remna_uuid '{remna_user.uuid}'")
+            logger.warning(f"Local user not found for remna_uuid '{remna_user.id}'")
             return
 
         if event == RemnaUserHwidDevicesEvent.ADDED:
@@ -241,10 +260,46 @@ class RemnaWebhookService:
                 )
             )
 
+    async def _process_expiration(
+        self,
+        user: UserDto,
+        current_subscription: SubscriptionDto,
+        remna_user: RemnaUserDto,
+        meta: Optional[WebhookMetaDto],
+    ) -> None:
+        # Remnawave >= 3.0 sends one 'user.expiration' event; meta.expiration is the hour
+        # offset from expiry (negative: before, positive: after). Configure the panel with
+        # EXPIRATION_NOTIFICATIONS_ENABLED=true and EXPIRATION_NOTIFICATIONS=[-72,-48,-24,24]
+        # to keep the four notifications the bot used to send.
+        hours = meta.expiration if meta else None
+        if hours in _EXPIRES_IN_DAYS_BY_HOURS:
+            await self._process_expiring(
+                user,
+                current_subscription,
+                _EXPIRES_IN_DAYS_BY_HOURS[hours],
+                f"{RemnaUserEvent.EXPIRATION}({hours})",
+                remna_user,
+            )
+        elif hours in _EXPIRED_AGO_DAYS_BY_HOURS:
+            await self.event_bus.publish(
+                SubscriptionExpiredAgoEvent(
+                    user=user,
+                    is_trial=current_subscription.is_trial,
+                    day=_EXPIRED_AGO_DAYS_BY_HOURS[hours],
+                )
+            )
+        else:
+            # Unknown or missing offset: never guess the hours and never notify.
+            logger.error(
+                f"Ignoring '{RemnaUserEvent.EXPIRATION}' for remna_id '{remna_user.id}': "
+                f"unsupported meta.expiration={hours!r}"
+            )
+
     async def _process_expiring(
         self,
         user: UserDto,
         current_subscription: SubscriptionDto,
+        day: int,
         event: str,
         remna_user: RemnaUserDto,
     ) -> None:
@@ -259,23 +314,18 @@ class RemnaWebhookService:
                 f"webhook={remna_user.expire_at})"
             )
             return
-        expire_map: dict[str, int] = {
-            RemnaUserEvent.EXPIRES_IN_72_HOURS: 3,
-            RemnaUserEvent.EXPIRES_IN_48_HOURS: 2,
-            RemnaUserEvent.EXPIRES_IN_24_HOURS: 1,
-        }
         await self.event_bus.publish(
             SubscriptionExpiresEvent(
-                day=expire_map[event],
+                day=day,
                 user=user,
                 is_trial=current_subscription.is_trial,
             )
         )
 
     async def _process_not_connected(self, remna_user: RemnaUserDto) -> None:
-        user = await self.user_dao.get_by_remna_uuid(remna_user.uuid)
+        user = await self.user_dao.get_by_remna_id(remna_user.id)
         if not user:
-            logger.warning(f"Local user not found for remna_uuid '{remna_user.uuid}'")
+            logger.warning(f"Local user not found for remna_uuid '{remna_user.id}'")
             return
         support_url = f"{T_ME}{self.config.bot.support_username.get_secret_value()}"
         await self.event_bus.publish(UserNotConnectedEvent(user=user, support_url=support_url))
@@ -293,7 +343,7 @@ class RemnaWebhookService:
         remna_user = report.user
         telegram_id = remna_user.telegram_id
         user_identifier = (
-            str(telegram_id) if telegram_id else (action_report.user_id or str(remna_user.uuid))
+            str(telegram_id) if telegram_id else (action_report.user_id or str(remna_user.id))
         )
         node_name = report.node.name
         blocked_ip = action_report.ip
@@ -364,12 +414,10 @@ class RemnaWebhookService:
 
     async def _process_delete_subscription(self, remna_user: RemnaUserDto) -> None:
         async with self.uow:
-            subscription = await self.subscription_dao.get_by_remna_id(remna_user.uuid)
+            subscription = await self.subscription_dao.get_by_remna_id(remna_user.id)
 
             if not subscription:
-                logger.warning(
-                    f"Subscription not found for UUID '{remna_user.uuid}', delete aborted"
-                )
+                logger.warning(f"Subscription not found for UUID '{remna_user.id}', delete aborted")
                 return
 
             user_id = subscription.user_id
@@ -389,7 +437,7 @@ class RemnaWebhookService:
                     await self.user_dao.clear_current_subscription(user_id)
 
             await self.uow.commit()
-            logger.info(f"Successfully processed deletion for subscription '{remna_user.uuid}'")
+            logger.info(f"Successfully processed deletion for subscription '{remna_user.id}'")
 
     async def _process_status(
         self,
@@ -439,7 +487,7 @@ class RemnaWebhookService:
                     name=user.name,
                     email=user.email,
                     is_trial=current_subscription.is_trial,
-                    subscription_id=remna_user.uuid,
+                    subscription_id=remna_user.id,
                     subscription_status=SubscriptionStatus(remna_user.status),
                     traffic_used=i18n_format_bytes_to_unit(
                         remna_user.used_traffic_bytes, min_unit=ByteUnitKey.MEGABYTE
@@ -474,10 +522,23 @@ class RemnaUserEvent(StrEnum):
     FIRST_CONNECTED = "user.first_connected"
     BANDWIDTH_USAGE_THRESHOLD_REACHED = "user.bandwidth_usage_threshold_reached"
 
+    # Remnawave >= 3.0: single expiration event with meta.expiration hours.
+    EXPIRATION = "user.expiration"
+
+    # Remnawave 2.x events, kept so a late retry from the old panel is still understood.
     EXPIRES_IN_72_HOURS = "user.expires_in_72_hours"
     EXPIRES_IN_48_HOURS = "user.expires_in_48_hours"
     EXPIRES_IN_24_HOURS = "user.expires_in_24_hours"
     EXPIRED_24_HOURS_AGO = "user.expired_24_hours_ago"
+
+
+_LEGACY_EXPIRING_DAYS: Final[dict[str, int]] = {
+    RemnaUserEvent.EXPIRES_IN_72_HOURS: 3,
+    RemnaUserEvent.EXPIRES_IN_48_HOURS: 2,
+    RemnaUserEvent.EXPIRES_IN_24_HOURS: 1,
+}
+_EXPIRES_IN_DAYS_BY_HOURS: Final[dict[int, int]] = {-72: 3, -48: 2, -24: 1}
+_EXPIRED_AGO_DAYS_BY_HOURS: Final[dict[int, int]] = {24: 1}
 
 
 class RemnaUserHwidDevicesEvent(StrEnum):

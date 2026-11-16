@@ -15,6 +15,14 @@ from .base import BaseDto, TimestampMixin, TrackableMixin
 from .plan import PlanSnapshotDto
 
 
+class UnlinkedSubscriptionError(RuntimeError):
+    """Raised when a subscription without a panel user id is about to reach the panel."""
+
+    def __init__(self, subscription_id: Optional[int]) -> None:
+        super().__init__(f"Subscription '{subscription_id}' is not linked to a panel user")
+        self.subscription_id = subscription_id
+
+
 @dataclass(frozen=True)
 class SquadInfoDto:
     uuid: UUID
@@ -23,7 +31,9 @@ class SquadInfoDto:
 
 @dataclass(kw_only=True)
 class RemnaSubscriptionDto:
-    uuid: UUID
+    # Numeric panel user id (Remnawave >= 3.0). Named remna_id, not id, so a generic
+    # field copy can never land it in the local primary key.
+    remna_id: int
     status: SubscriptionStatus
     expire_at: datetime
     url: str
@@ -39,11 +49,11 @@ class RemnaSubscriptionDto:
     @classmethod
     def from_remna_user(cls, remna_user: RemnaUserDto) -> "RemnaSubscriptionDto":
         return cls(
-            uuid=remna_user.uuid,
+            remna_id=remna_user.id,
             status=SubscriptionStatus(remna_user.status),
             expire_at=remna_user.expire_at,
             url=remna_user.subscription_url,
-            traffic_limit=bytes_to_gb(remna_user.traffic_limit_bytes),
+            traffic_limit=bytes_to_gb(int(remna_user.traffic_limit_bytes)),
             device_limit=remna_user.hwid_device_limit or 0,
             traffic_limit_strategy=TrafficLimitStrategy(remna_user.traffic_limit_strategy),
             tag=remna_user.tag,
@@ -55,7 +65,9 @@ class RemnaSubscriptionDto:
 @dataclass(kw_only=True)
 class SubscriptionDto(BaseDto, TrackableMixin, TimestampMixin):
     user_id: int = 0
-    user_remna_id: UUID
+    # Numeric panel user id. None only for a subscription left explicitly unlinked by the
+    # uuid -> id migration; such a subscription must never be sent to the panel.
+    user_remna_id: Optional[int]
 
     status: SubscriptionStatus = SubscriptionStatus.ACTIVE
     is_trial: bool = False
@@ -77,6 +89,12 @@ class SubscriptionDto(BaseDto, TrackableMixin, TimestampMixin):
     device_single_reset_at: Optional[datetime] = None
     device_all_reset_at: Optional[datetime] = None
     link_reset_at: Optional[datetime] = None
+
+    @property
+    def remna_id(self) -> int:
+        if self.user_remna_id is None:
+            raise UnlinkedSubscriptionError(self.id)
+        return self.user_remna_id
 
     @property
     def is_active(self) -> bool:

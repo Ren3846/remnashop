@@ -651,15 +651,15 @@ async def sync_getter(  # noqa: C901
     remna_sub: Optional[RemnaSubscriptionDto] = None
     remna_updated_at = None
 
-    if target_user.telegram_id:
+    # Compare against the panel user this subscription is linked to (exact id), not
+    # whichever panel user happens to share the Telegram ID.
+    if bot_sub and bot_sub.user_remna_id is not None:
         try:
-            result = await remnawave_sdk.users.get_users_by_telegram_id(
-                telegram_id=str(target_user.telegram_id)
+            remna_user: RemnaUserDto = await remnawave_sdk.users.get_user_by_id(
+                bot_sub.user_remna_id
             )
-            if result:
-                remna_user: RemnaUserDto = result[0]
-                remna_sub = RemnaSubscriptionDto.from_remna_user(remna_user)
-                remna_updated_at = remna_user.updated_at
+            remna_sub = RemnaSubscriptionDto.from_remna_user(remna_user)
+            remna_updated_at = remna_user.updated_at
         except NotFoundError:
             pass
 
@@ -670,7 +670,7 @@ async def sync_getter(  # noqa: C901
         if not sub:
             return ""
 
-        sub_id = str(getattr(sub, "user_remna_id", getattr(sub, "uuid", "")))
+        sub_id = str(getattr(sub, "user_remna_id", getattr(sub, "remna_id", "")))
 
         squad_names = ", ".join(squads_map.get(s, str(s)) for s in sub.internal_squads)
 

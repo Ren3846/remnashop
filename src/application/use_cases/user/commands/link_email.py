@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from typing import Optional
-from uuid import UUID
 
 from loguru import logger
 from remnapy.models import UserResponseDto
@@ -74,9 +73,9 @@ class LinkUserEmail(Interactor[LinkUserEmailDto, UserDto]):
             remna_by_tg = await self.remnawave.get_users_by_telegram_id(user.telegram_id)
 
         if bot_subscription:
-            remna_user = await self.remnawave.get_user_by_uuid(bot_subscription.user_remna_id)
+            remna_user = await self.remnawave.get_user_by_id(bot_subscription.user_remna_id)
             if remna_user:
-                await self._ensure_remna_identity(remna_user.uuid, user.telegram_id, email)
+                await self._ensure_remna_identity(remna_user.id, user.telegram_id, email)
                 return
 
         landing_user = self._pick_remna_user(remna_by_email)
@@ -88,21 +87,21 @@ class LinkUserEmail(Interactor[LinkUserEmailDto, UserDto]):
             ):
                 raise EmailAlreadyUsedError(email)
 
-            await self._ensure_remna_identity(landing_user.uuid, user.telegram_id, email)
+            await self._ensure_remna_identity(landing_user.id, user.telegram_id, email)
             await self.sync_remna_user.system(SyncRemnaUserDto(landing_user, creating=False))
             return
 
         if remna_by_tg:
-            await self._ensure_remna_identity(remna_by_tg[0].uuid, user.telegram_id, email)
+            await self._ensure_remna_identity(remna_by_tg[0].id, user.telegram_id, email)
 
     async def _ensure_remna_identity(
         self,
-        remna_uuid: UUID,
+        remna_id: int,
         telegram_id: Optional[int],
         email: str,
     ) -> None:
         await self.remnawave.link_identity(
-            remna_uuid,
+            remna_id,
             telegram_id=telegram_id,
             email=email,
         )

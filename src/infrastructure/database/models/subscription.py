@@ -3,7 +3,7 @@ from typing import Any, Optional
 from uuid import UUID
 
 from remnapy.enums import TrafficLimitStrategy
-from sqlalchemy import DateTime, ForeignKey, Integer
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.enums import SubscriptionStatus
@@ -17,7 +17,11 @@ class Subscription(BaseSql, TimestampMixin):
     __tablename__ = "subscriptions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_remna_id: Mapped[UUID] = mapped_column(index=True)
+    # Numeric Remnawave user id (panel >= 3.0, BIGINT). NULL only for a subscription the
+    # uuid -> id migration left explicitly unlinked; never sent to the panel.
+    user_remna_id: Mapped[Optional[int]] = mapped_column(BigInteger, index=True, nullable=True)
+    # Panel uuid from Remnawave 2.x, kept for audit and restore after the uuid -> id migration.
+    user_remna_uuid_legacy: Mapped[Optional[UUID]] = mapped_column(nullable=True)
     user_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("users.id", ondelete="CASCADE"),

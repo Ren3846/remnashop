@@ -52,8 +52,10 @@ class LandingPaymentService:
         periodicity: str = "MONTHLY",
     ) -> dict[str, Any]:
         gateway = await self.payment_gateway_dao.get_by_type(PaymentGatewayType.LAVA)
-        if not gateway or not gateway.is_active or not isinstance(
-            gateway.settings, LavaGatewaySettingsDto
+        if (
+            not gateway
+            or not gateway.is_active
+            or not isinstance(gateway.settings, LavaGatewaySettingsDto)
         ):
             raise RuntimeError("Lava payment gateway is not configured")
 
@@ -206,7 +208,7 @@ class LandingPaymentService:
             traffic_limit_strategy=plan.traffic_limit_strategy,
             traffic_limit_bytes=gb_to_bytes(plan.traffic_limit),
             hwid_device_limit=plan.device_limit,
-            tag=plan.tag,
+            tag=plan.tag or None,  # Remnawave 3.4: null or ^[A-Z0-9_]+$, never ""
             active_internal_squads=plan.internal_squads,
             external_squad_uuid=plan.external_squad,
         )
