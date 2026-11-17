@@ -11,6 +11,7 @@ from redis.asyncio import Redis
 from remnapy import RemnawaveSDK
 from remnapy.models import CreateUserRequestDto
 
+from src.application.common import BotService
 from src.application.common.dao import PaymentGatewayDao, PlanDao
 from src.application.dto import PlanSnapshotDto
 from src.application.dto.payment_gateway import LavaGatewaySettingsDto
@@ -20,11 +21,24 @@ from src.core.enums import PaymentGatewayType, PlanType
 from src.core.utils.converters import days_to_datetime, gb_to_bytes
 
 _REDIS_PREFIX = "web_payment:"
-_REDIS_TTL = 60 * 60 * 24
+# A Lava invoice can be paid long after it was created; keep the order for a week.
+_REDIS_TTL = 60 * 60 * 24 * 7
+_SOURCE_RE = re.compile(r"[^a-zA-Z0-9_.-]")
+_SOURCE_MAX_LEN = 48
+_HAPP_IOS_URL = "https://apps.apple.com/app/happ-proxy-utility/id6504287215"
+_HAPP_ANDROID_URL = "https://play.google.com/store/apps/details?id=com.happproxy"
 
 
 def landing_redis_key(payment_id: UUID | str) -> str:
     return f"{_REDIS_PREFIX}{payment_id}"
+
+
+def normalize_source(source: Optional[str]) -> Optional[str]:
+    """Traffic source label from the landing (utm_source / ref): safe chars only."""
+    if not source:
+        return None
+    cleaned = _SOURCE_RE.sub("_", source.strip())[:_SOURCE_MAX_LEN]
+    return cleaned or None
 
 
 class LandingPaymentService:
@@ -36,6 +50,7 @@ class LandingPaymentService:
         plan_dao: PlanDao,
         remnawave_sdk: RemnawaveSDK,
         retort: Retort,
+        bot_service: BotService,
     ) -> None:
         self.config = config
         self.redis = redis
@@ -43,6 +58,7 @@ class LandingPaymentService:
         self.plan_dao = plan_dao
         self.remnawave_sdk = remnawave_sdk
         self.retort = retort
+        self.bot_service = bot_service
 
     async def create_lava_payment_link(
         self,
@@ -50,6 +66,7 @@ class LandingPaymentService:
         days: int,
         offer_id: Optional[str] = None,
         periodicity: str = "MONTHLY",
+        source: Optional[str] = None,
     ) -> dict[str, Any]:
         gateway = await self.payment_gateway_dao.get_by_type(PaymentGatewayType.LAVA)
         if (
@@ -64,6 +81,7 @@ class LandingPaymentService:
         resolved_offer_id = offer_id or settings.offer_id
 
         plan_snapshot = await self._resolve_plan_snapshot(days)
+        source = normalize_source(source)
 
         # Lava subscription offers require MONTHLY (same as bot payment gateway).
         if periodicity != "MONTHLY":
@@ -114,13 +132,14 @@ class LandingPaymentService:
                     "offer_id": resolved_offer_id,
                     "periodicity": lava_periodicity,
                     "plan_snapshot": self.retort.dump(plan_snapshot),
+                    "source": source,
                 }
             ),
         )
 
         logger.info(
             f"Landing payment created: id={payment_id}, email={email}, days={days}, "
-            f"offer={resolved_offer_id}"
+            f"offer={resolved_offer_id}, source={source}"
         )
 
         return {
@@ -131,7 +150,9 @@ class LandingPaymentService:
         }
 
     async def try_fulfill(self, payment_id: UUID) -> bool:
-        raw = await self.redis.get(landing_redis_key(payment_id))
+        key = landing_redis_key(payment_id)
+        # Atomic claim: Lava repeats webhooks, only one delivery may create the panel user.
+        raw = await self.redis.getdel(key)
         if not raw:
             return False
 
@@ -139,8 +160,7 @@ class LandingPaymentService:
         email: str = payment_data["email"]
         days: int = payment_data.get("days", 30)
         plan_data = payment_data.get("plan_snapshot")
-
-        await self.redis.delete(landing_redis_key(payment_id))
+        source: Optional[str] = payment_data.get("source")
 
         plan_snapshot = (
             self.retort.load(plan_data, PlanSnapshotDto)
@@ -151,15 +171,31 @@ class LandingPaymentService:
         username = self._build_username(email)
 
         try:
-            request = self._build_create_request(email=email, username=username, plan=plan_snapshot)
+            request = self._build_create_request(
+                email=email, username=username, plan=plan_snapshot, source=source
+            )
             remna_user = await self.remnawave_sdk.users.create_user(request)
             subscription_url = remna_user.subscription_url
-            logger.info(f"Landing Remnawave user '{username}' created for email={email}")
+            logger.info(
+                f"Landing Remnawave user '{username}' (id={remna_user.id}) created for "
+                f"email={email}, payment={payment_id}, source={source}"
+            )
         except Exception as e:
+            # Paid but not delivered: put the order back so a webhook retry can fulfil it.
+            await self.redis.setex(key, _REDIS_TTL, raw)
             logger.exception(f"Failed to create Remnawave user for landing email={email}: {e}")
             raise
 
-        await self._send_activation_email(email=email, subscription_url=subscription_url, days=days)
+        try:
+            await self._send_activation_email(
+                email=email, subscription_url=subscription_url, days=days
+            )
+        except Exception as e:
+            # The panel user exists; never re-create it. Surface for manual resend.
+            logger.critical(
+                f"Landing user '{username}' created but activation email to {email} failed: {e}"
+            )
+            raise
         return True
 
     async def _resolve_plan_snapshot(self, days: int) -> PlanSnapshotDto:
@@ -200,10 +236,12 @@ class LandingPaymentService:
         email: str,
         username: str,
         plan: PlanSnapshotDto,
+        source: Optional[str] = None,
     ) -> CreateUserRequestDto:
         return CreateUserRequestDto(
             username=username,
             email=email,
+            description=f"landing; source={source or 'direct'}",
             expire_at=days_to_datetime(plan.duration),
             traffic_limit_strategy=plan.traffic_limit_strategy,
             traffic_limit_bytes=gb_to_bytes(plan.traffic_limit),
@@ -219,6 +257,26 @@ class LandingPaymentService:
             logger.warning("Mailgun is not configured, skipping landing activation email")
             return
 
+        link_url = await self.bot_service.get_link_email_url()
+        html = (
+            "<h2>Спасибо за покупку!</h2>"
+            f"<p>Ваша VPN-подписка активирована на <b>{days} дней</b>.</p>"
+            "<p><b>Как подключиться:</b></p>"
+            "<ol>"
+            "<li>Установите приложение Happ: "
+            f"<a href='{_HAPP_IOS_URL}'>iPhone / iPad</a> или "
+            f"<a href='{_HAPP_ANDROID_URL}'>Android</a>.</li>"
+            "<li>Скопируйте вашу ссылку-ключ:<br>"
+            f"<a href='{subscription_url}'>{subscription_url}</a></li>"
+            "<li>В Happ нажмите «+» → «Вставить из буфера обмена».</li>"
+            "<li>Выберите сервер и нажмите кнопку подключения.</li>"
+            "</ol>"
+            "<p>Чтобы управлять подпиской и продлевать её в Telegram, откройте бота "
+            "и укажите этот же email:</p>"
+            f"<p><a href='{link_url}'>{link_url}</a></p>"
+            "<p>Сохраните это письмо: ссылка-ключ понадобится при переустановке приложения.</p>"
+        )
+
         async with AsyncClient(timeout=10) as client:
             response = await client.post(
                 f"{mailgun.base_url}/v3/{mailgun.domain}/messages",
@@ -226,16 +284,8 @@ class LandingPaymentService:
                 data={
                     "from": mailgun.from_email,
                     "to": email,
-                    "subject": "VEPEN VPN — подписка активирована",
-                    "html": (
-                        "<h2>Спасибо за покупку!</h2>"
-                        "<p>Ваша VPN-подписка активирована.</p>"
-                        "<p>Нажмите на ссылку — приложение откроется автоматически:</p>"
-                        f"<p><a href='{subscription_url}'>{subscription_url}</a></p>"
-                        f"<p>Срок действия: <b>{days} дней</b></p>"
-                        "<p>Также откройте Telegram-бот и укажите тот же email для привязки:</p>"
-                        "<p><a href='https://t.me/vepen_bot?start=link'>@vepen_bot</a></p>"
-                    ),
+                    "subject": "Ваша VPN-подписка активирована",
+                    "html": html,
                 },
             )
             response.raise_for_status()

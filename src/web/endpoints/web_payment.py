@@ -24,6 +24,7 @@ class CreateLavaLinkRequest(BaseModel):
     days: int = Field(default=30, ge=1)
     offerId: str | None = None
     periodicity: str = "MONTHLY"
+    source: str | None = Field(default=None, max_length=128)
 
 
 class CreateLavaLinkResponse(BaseModel):
@@ -62,6 +63,7 @@ async def create_lava_link_landing(
             days=body.days,
             offer_id=body.offerId,
             periodicity=body.periodicity,
+            source=body.source,
         )
     except RuntimeError as e:
         message = str(e)

@@ -127,6 +127,11 @@ class LavaGateway(BasePaymentGateway):
 
         event_type = webhook_data.get("eventType", "")
         payment_id = UUID(contract_id)
+        # parentContractId is set on recurring charges; logged to trace renewals.
+        logger.info(
+            f"Lava.top webhook: event='{event_type}', contract='{contract_id}', "
+            f"parent='{webhook_data.get('parentContractId')}'"
+        )
 
         match event_type:
             case "payment.success" | "subscription.recurring.payment.success":
