@@ -100,3 +100,44 @@ def test_normalize_source() -> None:
     assert normalize_source("tg-ads_1.a") == "tg-ads_1.a"
     assert normalize_source("<script>x</script>") == "_script_x__script_"
     assert len(normalize_source("a" * 500)) == 48
+
+
+class FakePlan(SimpleNamespace):
+    def get_duration(self, days: int):
+        return days if days in self.days else None
+
+
+def plan(**kw) -> FakePlan:
+    base = dict(name="p", is_trial=False, availability="ALL", days=[30], internal_squads=["sq"])
+    return FakePlan(**{**base, **kw})
+
+
+def resolve(plans, monkeypatch) -> str:
+    from src.application.services import landing_payment as module
+
+    monkeypatch.setattr(
+        module.PlanSnapshotDto, "from_plan", staticmethod(lambda p, days: p.name)
+    )
+
+    async def get_active_plans():
+        return plans
+
+    service = make_service(FakeRedis(), FakeUsers())
+    service.plan_dao = SimpleNamespace(get_active_plans=get_active_plans)
+    return asyncio.run(service._resolve_plan_snapshot(30))
+
+
+def test_public_plan_with_squads_is_used(monkeypatch) -> None:
+    plans = [
+        plan(name="trial", is_trial=True),
+        plan(name="by-link", availability="LINK"),
+        plan(name="no-squads", internal_squads=[]),
+        plan(name="other-duration", days=[90]),
+        plan(name="public"),
+    ]
+    assert resolve(plans, monkeypatch) == "public"
+
+
+def test_no_sellable_plan_refuses_payment(monkeypatch) -> None:
+    with pytest.raises(RuntimeError):
+        resolve([plan(is_trial=True), plan(internal_squads=[])], monkeypatch)

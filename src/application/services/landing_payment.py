@@ -17,7 +17,7 @@ from src.application.dto import PlanSnapshotDto
 from src.application.dto.payment_gateway import LavaGatewaySettingsDto
 from src.core.config import AppConfig
 from src.core.config.mailgun import MailgunConfig
-from src.core.enums import PaymentGatewayType, PlanType
+from src.core.enums import PaymentGatewayType, PlanAvailability, PlanType
 from src.core.utils.converters import days_to_datetime, gb_to_bytes
 
 _REDIS_PREFIX = "web_payment:"
@@ -25,6 +25,7 @@ _REDIS_PREFIX = "web_payment:"
 _REDIS_TTL = 60 * 60 * 24 * 7
 _SOURCE_RE = re.compile(r"[^a-zA-Z0-9_.-]")
 _SOURCE_MAX_LEN = 48
+_PUBLIC_AVAILABILITY = (PlanAvailability.ALL, PlanAvailability.NEW)
 _HAPP_IOS_URL = "https://apps.apple.com/app/happ-proxy-utility/id6504287215"
 _HAPP_ANDROID_URL = "https://play.google.com/store/apps/details?id=com.happproxy"
 
@@ -199,21 +200,19 @@ class LandingPaymentService:
         return True
 
     async def _resolve_plan_snapshot(self, days: int) -> PlanSnapshotDto:
-        for plan in await self.plan_dao.get_active_allowed_plans():
-            if plan.is_trial:
+        # The landing sells the public plan. Anything else (trial, by-link, per-user plans)
+        # is skipped, and so is a plan without squads: it would give a paid user no servers.
+        for plan in await self.plan_dao.get_active_plans():
+            if plan.is_trial or plan.availability not in _PUBLIC_AVAILABILITY:
                 continue
-            if plan.get_duration(days):
-                return PlanSnapshotDto.from_plan(plan, days)
+            if not plan.get_duration(days):
+                continue
+            if not plan.internal_squads:
+                logger.error(f"Plan '{plan.name}' has no internal squads, not sold on landing")
+                continue
+            return PlanSnapshotDto.from_plan(plan, days)
 
-        logger.warning(f"No active plan found for landing duration={days}, using defaults")
-        return PlanSnapshotDto(
-            id=-1,
-            name="landing",
-            type=PlanType.BOTH,
-            traffic_limit=100,
-            device_limit=1,
-            duration=days,
-        )
+        raise RuntimeError(f"No public plan with squads is configured for {days} days")
 
     @staticmethod
     def _default_plan_snapshot(days: int) -> PlanSnapshotDto:
