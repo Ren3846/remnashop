@@ -2,15 +2,24 @@ from aiogram.enums import ButtonStyle
 from aiogram_dialog import Dialog, StartMode
 from aiogram_dialog.widgets.input import MessageInput
 from aiogram_dialog.widgets.style import Style
-from aiogram_dialog.widgets.text import Format
+from aiogram_dialog.widgets.text import Const, Format
 from magic_filter import F
 
 from src.application.common.policy import Permission
-from src.core.constants import INLINE_QUERY_INVITE, PAYMENT_PREFIX
+from src.core.constants import (
+    APP_STORE_REGION_GUIDE_URL,
+    HAPP_ANDROID_APK_URL,
+    HAPP_IOS_URL,
+    INCY_ANDROID_URL,
+    INCY_IOS_URL,
+    INLINE_QUERY_INVITE,
+    PAYMENT_PREFIX,
+    RABBITHOLE_IOS_URL,
+)
 from src.core.enums import BannerName
 from src.telegram.keyboards import build_buttons_row, connect_buttons
-from src.telegram.routers.dashboard.handlers import on_smart_search
 from src.telegram.routers.common.email_handlers import on_confirm_email_input, on_link_email_input
+from src.telegram.routers.dashboard.handlers import on_smart_search
 from src.telegram.states import Dashboard, MainMenu, Subscription
 from src.telegram.utils import require_permission
 from src.telegram.widgets import Banner, I18nFormat, IgnoreUpdate
@@ -364,9 +373,6 @@ device_confirm_reissue = Window(
     getter=device_confirm_delete_getter,
 )
 
-HAPP_ANDROID_URL = "https://play.google.com/store/apps/details?id=com.happproxy"
-HAPP_IOS_URL = "https://apps.apple.com/ua/app/happ-proxy-utility/id6504287215"
-
 link_email = Window(
     Banner(BannerName.MENU),
     I18nFormat("msg-subscription-email"),
@@ -412,14 +418,40 @@ connect_guide = Window(
     ),
     Row(
         Url(
-            text=I18nFormat("btn-connect-guide.android"),
-            url=Format(HAPP_ANDROID_URL),
+            text=I18nFormat("btn-connect-guide.region"),
+            url=Const(APP_STORE_REGION_GUIDE_URL),
+            id="app_store_region",
+        ),
+    ),
+    Row(
+        Url(
+            text=I18nFormat("btn-connect-guide.ios-happ"),
+            url=Const(HAPP_IOS_URL),
+            id="happ_ios",
+        ),
+        Url(
+            text=I18nFormat("btn-connect-guide.ios-incy"),
+            url=Const(INCY_IOS_URL),
+            id="incy_ios",
+        ),
+    ),
+    Row(
+        Url(
+            text=I18nFormat("btn-connect-guide.ios-rabbithole"),
+            url=Const(RABBITHOLE_IOS_URL),
+            id="rabbithole_ios",
+        ),
+    ),
+    Row(
+        Url(
+            text=I18nFormat("btn-connect-guide.android-happ"),
+            url=Const(HAPP_ANDROID_APK_URL),
             id="happ_android",
         ),
         Url(
-            text=I18nFormat("btn-connect-guide.ios"),
-            url=Format(HAPP_IOS_URL),
-            id="happ_ios",
+            text=I18nFormat("btn-connect-guide.android-incy"),
+            url=Const(INCY_ANDROID_URL),
+            id="incy_android",
         ),
     ),
     Row(

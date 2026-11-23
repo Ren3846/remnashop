@@ -17,6 +17,14 @@ from src.application.dto import PlanSnapshotDto
 from src.application.dto.payment_gateway import LavaGatewaySettingsDto
 from src.core.config import AppConfig
 from src.core.config.mailgun import MailgunConfig
+from src.core.constants import (
+    APP_STORE_REGION_GUIDE_URL,
+    HAPP_ANDROID_APK_URL,
+    HAPP_IOS_URL,
+    INCY_ANDROID_URL,
+    INCY_IOS_URL,
+    RABBITHOLE_IOS_URL,
+)
 from src.core.enums import PaymentGatewayType, PlanAvailability, PlanType
 from src.core.utils.converters import days_to_datetime, gb_to_bytes
 
@@ -26,8 +34,6 @@ _REDIS_TTL = 60 * 60 * 24 * 7
 _SOURCE_RE = re.compile(r"[^a-zA-Z0-9_.-]")
 _SOURCE_MAX_LEN = 48
 _PUBLIC_AVAILABILITY = (PlanAvailability.ALL, PlanAvailability.NEW)
-_HAPP_IOS_URL = "https://apps.apple.com/app/happ-proxy-utility/id6504287215"
-_HAPP_ANDROID_URL = "https://play.google.com/store/apps/details?id=com.happproxy"
 
 
 def landing_redis_key(payment_id: UUID | str) -> str:
@@ -262,18 +268,27 @@ class LandingPaymentService:
             f"<p>Ваша VPN-подписка активирована на <b>{days} дней</b>.</p>"
             "<p><b>Как подключиться:</b></p>"
             "<ol>"
-            "<li>Установите приложение Happ: "
-            f"<a href='{_HAPP_IOS_URL}'>iPhone / iPad</a> или "
-            f"<a href='{_HAPP_ANDROID_URL}'>Android</a>.</li>"
+            "<li>Установите приложение."
+            "<br><b>iPhone, iPad, Mac.</b> Happ и INCY удалены из российского App Store. "
+            f"<a href='{APP_STORE_REGION_GUIDE_URL}'>Смените страну в App Store</a> "
+            f"и установите <a href='{HAPP_IOS_URL}'>Happ</a> или "
+            f"<a href='{INCY_IOS_URL}'>INCY</a>. Если сменить страну не получается, "
+            f"установите <a href='{RABBITHOLE_IOS_URL}'>RabbitHole</a>: "
+            "он есть в российском App Store."
+            "<br><b>Android.</b> Happ в Google Play нет: скачайте и откройте файл "
+            f"<a href='{HAPP_ANDROID_APK_URL}'>Happ.apk</a>. "
+            f"Или установите <a href='{INCY_ANDROID_URL}'>INCY из Google Play</a>.</li>"
             "<li>Скопируйте вашу ссылку-ключ:<br>"
             f"<a href='{subscription_url}'>{subscription_url}</a></li>"
-            "<li>В Happ нажмите «+» → «Вставить из буфера обмена».</li>"
+            "<li>В приложении нажмите «+» и выберите вставку из буфера обмена.</li>"
             "<li>Выберите сервер и нажмите кнопку подключения.</li>"
             "</ol>"
             "<p>Чтобы управлять подпиской и продлевать её в Telegram, откройте бота "
             "и укажите этот же email:</p>"
             f"<p><a href='{link_url}'>{link_url}</a></p>"
-            "<p>Сохраните это письмо: ссылка-ключ понадобится при переустановке приложения.</p>"
+            "<p>Сохраните это письмо: ссылка-ключ понадобится при переустановке приложения. "
+            "Устанавливайте приложения только по ссылкам из письма: клон из поиска "
+            "может украсть вашу ссылку-ключ.</p>"
         )
 
         async with AsyncClient(timeout=10) as client:

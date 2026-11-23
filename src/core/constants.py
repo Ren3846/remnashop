@@ -35,6 +35,19 @@ REMNAWAVE_MAX_VERSION: Final[Version] = Version("3.5.0")
 REPOSITORY: Final[str] = "https://github.com/snoups/remnashop"
 DOCS: Final[str] = "https://remnashop.mintlify.app"
 T_ME: Final[str] = "https://t.me/"
+
+# VPN client apps. Happ and INCY are gone from the Russian App Store, Happ also from
+# Google Play, so these point at another storefront or at the developer's own release.
+# Sources of truth: https://www.happ.su/main/ru, https://incy.cc/,
+# https://github.com/INCY-DEV/incy-platforms. Last checked 2026-11-23.
+APP_STORE_REGION_GUIDE_URL: Final[str] = "https://happ.info/ru/apple-region/"
+HAPP_IOS_URL: Final[str] = "https://apps.apple.com/de/app/happ-proxy-utility/id6504287215"
+INCY_IOS_URL: Final[str] = "https://apps.apple.com/de/app/incy/id6756943388"
+RABBITHOLE_IOS_URL: Final[str] = "https://apps.apple.com/ru/app/rabbithole-vpn-client/id6683309629"
+HAPP_ANDROID_APK_URL: Final[str] = (
+    "https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk"
+)
+INCY_ANDROID_URL: Final[str] = "https://play.google.com/store/apps/details?id=llc.itdev.incy"
 API_V1: Final[str] = "/api/v1"
 BOT_WEBHOOK_PATH: Final[str] = "/telegram"
 PAYMENTS_WEBHOOK_PATH: Final[str] = "/payments"

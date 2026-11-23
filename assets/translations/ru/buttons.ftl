@@ -37,8 +37,12 @@ btn-devices =
 
 btn-connect-guide =
     .get-link = 📋 Получить ссылку подписки
-    .android = 🤖 Android (Google Play)
-    .ios = 🍎 iOS (App Store)
+    .region = 🌍 Как сменить страну App Store
+    .ios-happ = 🍎 Happ
+    .ios-incy = 🍎 INCY
+    .ios-rabbithole = 🍎 RabbitHole — без смены страны
+    .android-happ = 🤖 Happ.apk
+    .android-incy = 🤖 INCY (Google Play)
 
 btn-backup =
     .active-toggle = { $enabled ->
