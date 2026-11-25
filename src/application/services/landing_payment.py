@@ -1,5 +1,6 @@
 import re
 import uuid
+from decimal import Decimal
 from typing import Any, Optional
 from uuid import UUID
 
@@ -13,7 +14,7 @@ from remnapy.models import CreateUserRequestDto
 
 from src.application.common import BotService
 from src.application.common.dao import PaymentGatewayDao, PlanDao
-from src.application.dto import PlanSnapshotDto
+from src.application.dto import PlanDto, PlanSnapshotDto
 from src.application.dto.payment_gateway import LavaGatewaySettingsDto
 from src.core.config import AppConfig
 from src.core.config.mailgun import MailgunConfig
@@ -25,8 +26,9 @@ from src.core.constants import (
     INCY_IOS_URL,
     RABBITHOLE_IOS_URL,
 )
-from src.core.enums import PaymentGatewayType, PlanAvailability, PlanType
+from src.core.enums import Currency, PaymentGatewayType, PlanAvailability, PlanType
 from src.core.utils.converters import days_to_datetime, gb_to_bytes
+from src.infrastructure.payment_gateways.lava import LavaOfferNotFoundError, resolve_lava_offer
 
 _REDIS_PREFIX = "web_payment:"
 # A Lava invoice can be paid long after it was created; keep the order for a week.
@@ -67,12 +69,26 @@ class LandingPaymentService:
         self.retort = retort
         self.bot_service = bot_service
 
+    async def get_public_plans(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "code": plan.public_code,
+                "name": plan.name,
+                "devices": plan.device_limit,
+                "trafficGb": plan.traffic_limit,
+                "durations": [
+                    {"days": d.days, "price": float(d.get_price(Currency.RUB))}
+                    for d in plan.durations
+                ],
+            }
+            for plan in await self._public_plans()
+        ]
+
     async def create_lava_payment_link(
         self,
         email: str,
         days: int,
-        offer_id: Optional[str] = None,
-        periodicity: str = "MONTHLY",
+        plan_code: Optional[str] = None,
         source: Optional[str] = None,
     ) -> dict[str, Any]:
         gateway = await self.payment_gateway_dao.get_by_type(PaymentGatewayType.LAVA)
@@ -85,31 +101,34 @@ class LandingPaymentService:
 
         settings: LavaGatewaySettingsDto = gateway.settings
         api_key = settings.api_key.get_secret_value()  # type: ignore[union-attr]
-        resolved_offer_id = offer_id or settings.offer_id
 
-        plan_snapshot = await self._resolve_plan_snapshot(days)
+        plan_snapshot, amount = await self._resolve_plan_snapshot(days, plan_code)
         source = normalize_source(source)
-
-        # Lava subscription offers require MONTHLY (same as bot payment gateway).
-        if periodicity != "MONTHLY":
-            logger.warning(
-                f"Landing payment requested periodicity={periodicity!r}, forcing MONTHLY for Lava"
-            )
-        lava_periodicity = "MONTHLY"
-
-        payload = {
-            "offerId": resolved_offer_id,
-            "email": email,
-            "currency": "RUB",
-            "periodicity": lava_periodicity,
-            "buyerLanguage": "RU",
-        }
 
         async with AsyncClient(
             base_url="https://gate.lava.top",
             headers={"X-Api-Key": api_key, "Content-Type": "application/json"},
             timeout=15,
         ) as client:
+            try:
+                # Never charge a price other than the one shown on the site.
+                resolved_offer_id, lava_periodicity = await resolve_lava_offer(client, amount)
+            except LavaOfferNotFoundError as e:
+                logger.critical(f"Landing plan '{plan_snapshot.name}' for {days} days: {e}")
+                raise RuntimeError(str(e)) from e
+            except HTTPStatusError as e:
+                raise RuntimeError(
+                    f"Lava payment failed ({e.response.status_code}): {e.response.text}"
+                ) from e
+
+            payload = {
+                "offerId": resolved_offer_id,
+                "email": email,
+                "currency": "RUB",
+                "periodicity": lava_periodicity,
+                "buyerLanguage": "RU",
+            }
+
             try:
                 response = await client.post("/api/v2/invoice", content=orjson.dumps(payload))
                 if response.status_code >= 400:
@@ -139,13 +158,15 @@ class LandingPaymentService:
                     "offer_id": resolved_offer_id,
                     "periodicity": lava_periodicity,
                     "plan_snapshot": self.retort.dump(plan_snapshot),
+                    "amount": float(amount),
                     "source": source,
                 }
             ),
         )
 
         logger.info(
-            f"Landing payment created: id={payment_id}, email={email}, days={days}, "
+            f"Landing payment created: id={payment_id}, email={email}, "
+            f"plan='{plan_snapshot.name}', days={days}, amount={amount}, "
             f"offer={resolved_offer_id}, source={source}"
         )
 
@@ -205,20 +226,33 @@ class LandingPaymentService:
             raise
         return True
 
-    async def _resolve_plan_snapshot(self, days: int) -> PlanSnapshotDto:
-        # The landing sells the public plan. Anything else (trial, by-link, per-user plans)
-        # is skipped, and so is a plan without squads: it would give a paid user no servers.
+    async def _public_plans(self) -> list[PlanDto]:
+        # The landing sells public plans only. Trial, by-link and per-user plans are skipped,
+        # and so is a plan without squads: it would give a paid user no servers.
+        plans = []
         for plan in await self.plan_dao.get_active_plans():
             if plan.is_trial or plan.availability not in _PUBLIC_AVAILABILITY:
-                continue
-            if not plan.get_duration(days):
                 continue
             if not plan.internal_squads:
                 logger.error(f"Plan '{plan.name}' has no internal squads, not sold on landing")
                 continue
-            return PlanSnapshotDto.from_plan(plan, days)
+            plans.append(plan)
+        return plans
 
-        raise RuntimeError(f"No public plan with squads is configured for {days} days")
+    async def _resolve_plan_snapshot(
+        self, days: int, plan_code: Optional[str] = None
+    ) -> tuple[PlanSnapshotDto, Decimal]:
+        for plan in await self._public_plans():
+            if plan_code and plan.public_code != plan_code:
+                continue
+            duration = plan.get_duration(days)
+            if not duration:
+                continue
+            return PlanSnapshotDto.from_plan(plan, days), duration.get_price(Currency.RUB)
+
+        raise RuntimeError(
+            f"No public plan with squads is configured for {days} days (plan={plan_code!r})"
+        )
 
     @staticmethod
     def _default_plan_snapshot(days: int) -> PlanSnapshotDto:

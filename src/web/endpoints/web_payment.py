@@ -1,5 +1,4 @@
 import hmac
-from collections.abc import AsyncIterator
 from uuid import UUID
 
 import orjson
@@ -22,8 +21,7 @@ router = APIRouter(prefix="/checkout")
 class CreateLavaLinkRequest(BaseModel):
     email: EmailStr
     days: int = Field(default=30, ge=1)
-    offerId: str | None = None
-    periodicity: str = "MONTHLY"
+    plan: str | None = Field(default=None, max_length=64)
     source: str | None = Field(default=None, max_length=128)
 
 
@@ -40,11 +38,21 @@ class CreateLavaLinkResponse(BaseModel):
 def _check_secret(x_landing_secret: str | None, config: AppConfig) -> None:
     expected = config.landing_secret
     if not expected:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Landing not configured")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Landing not configured"
+        )
     if not x_landing_secret or not hmac.compare_digest(
         expected.get_secret_value(), x_landing_secret
     ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid secret")
+
+
+@router.get("/plans")
+async def landing_plans(
+    request_container: AsyncContainer = Depends(with_request_container),
+) -> dict[str, list[dict[str, object]]]:
+    landing_payment = await request_container.get(LandingPaymentService)
+    return {"plans": await landing_payment.get_public_plans()}
 
 
 @router.post("/lava/create-link-landing", response_model=CreateLavaLinkResponse)
@@ -61,8 +69,7 @@ async def create_lava_link_landing(
         result = await landing_payment.create_lava_payment_link(
             email=str(body.email),
             days=body.days,
-            offer_id=body.offerId,
-            periodicity=body.periodicity,
+            plan_code=body.plan,
             source=body.source,
         )
     except RuntimeError as e:

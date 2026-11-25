@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 from decimal import Decimal
-from typing import Final, Optional
+from typing import Any, Final, Optional
 from uuid import UUID
 
 import orjson
@@ -47,6 +47,48 @@ def verify_lava_webhook(request: Request, raw_body: bytes, secret: str) -> bool:
     return False
 
 
+class LavaOfferNotFoundError(RuntimeError):
+    pass
+
+
+# Lava.top takes the price from the offer, not from the request, so the offer has to be
+# picked by the amount we are about to show the buyer. ONE_TIME offers are preferred:
+# recurring charges are not handled by the bot.
+_PERIODICITY_ORDER: Final[tuple[str, ...]] = (
+    "ONE_TIME",
+    "MONTHLY",
+    "PERIOD_90_DAYS",
+    "PERIOD_180_DAYS",
+    "PERIOD_YEAR",
+)
+
+
+def pick_lava_offer(products: list[dict[str, Any]], amount: Decimal) -> tuple[str, str]:
+    matches: list[tuple[int, str, str]] = []
+    for product in products:
+        for offer in product.get("offers") or []:
+            for price in offer.get("prices") or []:
+                periodicity = price.get("periodicity") or "ONE_TIME"
+                if price.get("currency") != "RUB" or periodicity not in _PERIODICITY_ORDER:
+                    continue
+                if Decimal(str(price.get("amount"))) == amount:
+                    matches.append(
+                        (_PERIODICITY_ORDER.index(periodicity), offer["id"], periodicity)
+                    )
+
+    if not matches:
+        raise LavaOfferNotFoundError(f"No Lava.top offer priced at {amount} RUB")
+
+    _, offer_id, periodicity = min(matches)
+    return offer_id, periodicity
+
+
+async def resolve_lava_offer(client: AsyncClient, amount: Decimal) -> tuple[str, str]:
+    response = await client.get("/api/v2/products", params={"showAllSubscriptionPeriods": "true"})
+    response.raise_for_status()
+    return pick_lava_offer(orjson.loads(response.content).get("items") or [], amount)
+
+
 # https://gate.lava.top/docs
 class LavaGateway(BasePaymentGateway):
     _client: AsyncClient
@@ -70,26 +112,26 @@ class LavaGateway(BasePaymentGateway):
             headers={"X-Api-Key": api_key, "Content-Type": "application/json"},
         )
 
-    async def handle_create_payment(self, amount: Decimal, details: str, email: Optional[str] = None) -> PaymentResultDto:
-        settings: LavaGatewaySettingsDto = self.data.settings  # type: ignore[assignment]
+    async def handle_create_payment(
+        self, amount: Decimal, details: str, email: Optional[str] = None
+    ) -> PaymentResultDto:
+        offer_id, periodicity = await resolve_lava_offer(self._client, amount)
 
         payload = {
-            "offerId": settings.offer_id,
+            "offerId": offer_id,
             "email": email or "noreply@example.com",
             "currency": "RUB",
-            "periodicity": "MONTHLY",
+            "periodicity": periodicity,
             "buyerLanguage": "RU",
         }
 
         body = orjson.dumps(payload)
-        logger.debug(f"Creating Lava.top payment, offer_id={settings.offer_id}, payload={payload}")
+        logger.debug(f"Creating Lava.top payment, amount={amount}, payload={payload}")
 
         try:
             response = await self._client.post("/api/v2/invoice", content=body)
             if response.status_code >= 400:
-                logger.error(
-                    f"Lava.top API error {response.status_code}: {response.text}"
-                )
+                logger.error(f"Lava.top API error {response.status_code}: {response.text}")
             response.raise_for_status()
             data = orjson.loads(response.content)
 
@@ -136,7 +178,11 @@ class LavaGateway(BasePaymentGateway):
         match event_type:
             case "payment.success" | "subscription.recurring.payment.success":
                 transaction_status = TransactionStatus.COMPLETED
-            case "payment.failed" | "subscription.recurring.payment.failed" | "subscription.cancelled":
+            case (
+                "payment.failed"
+                | "subscription.recurring.payment.failed"
+                | "subscription.cancelled"
+            ):
                 transaction_status = TransactionStatus.CANCELED
             case _:
                 raise ValueError(f"Unsupported Lava.top event type: '{event_type}'")

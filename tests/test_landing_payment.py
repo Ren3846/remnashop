@@ -104,27 +104,35 @@ def test_normalize_source() -> None:
 
 class FakePlan(SimpleNamespace):
     def get_duration(self, days: int):
-        return days if days in self.days else None
+        if days not in self.days:
+            return None
+        return SimpleNamespace(days=days, get_price=lambda currency: self.price)
 
 
 def plan(**kw) -> FakePlan:
-    base = dict(name="p", is_trial=False, availability="ALL", days=[30], internal_squads=["sq"])
+    base = dict(
+        name="p",
+        public_code="p",
+        price=250,
+        is_trial=False,
+        availability="ALL",
+        days=[30],
+        internal_squads=["sq"],
+    )
     return FakePlan(**{**base, **kw})
 
 
-def resolve(plans, monkeypatch) -> str:
+def resolve(plans, monkeypatch, plan_code=None):
     from src.application.services import landing_payment as module
 
-    monkeypatch.setattr(
-        module.PlanSnapshotDto, "from_plan", staticmethod(lambda p, days: p.name)
-    )
+    monkeypatch.setattr(module.PlanSnapshotDto, "from_plan", staticmethod(lambda p, days: p.name))
 
     async def get_active_plans():
         return plans
 
     service = make_service(FakeRedis(), FakeUsers())
     service.plan_dao = SimpleNamespace(get_active_plans=get_active_plans)
-    return asyncio.run(service._resolve_plan_snapshot(30))
+    return asyncio.run(service._resolve_plan_snapshot(30, plan_code))
 
 
 def test_public_plan_with_squads_is_used(monkeypatch) -> None:
@@ -135,9 +143,51 @@ def test_public_plan_with_squads_is_used(monkeypatch) -> None:
         plan(name="other-duration", days=[90]),
         plan(name="public"),
     ]
-    assert resolve(plans, monkeypatch) == "public"
+    assert resolve(plans, monkeypatch) == ("public", 250)
+
+
+def test_plan_is_picked_by_code_with_its_own_price(monkeypatch) -> None:
+    plans = [
+        plan(name="base", public_code="base"),
+        plan(name="plus", public_code="plus", price=750),
+    ]
+    assert resolve(plans, monkeypatch, "plus") == ("plus", 750)
+    # An unknown code must not silently fall back to another plan.
+    with pytest.raises(RuntimeError):
+        resolve(plans, monkeypatch, "gone")
 
 
 def test_no_sellable_plan_refuses_payment(monkeypatch) -> None:
     with pytest.raises(RuntimeError):
         resolve([plan(is_trial=True), plan(internal_squads=[])], monkeypatch)
+
+
+def test_lava_offer_is_picked_by_price() -> None:
+    from decimal import Decimal
+
+    from src.infrastructure.payment_gateways.lava import LavaOfferNotFoundError, pick_lava_offer
+
+    products = [
+        {
+            "offers": [
+                {
+                    "id": "sub",
+                    "prices": [{"periodicity": "MONTHLY", "amount": 250.0, "currency": "RUB"}],
+                },
+                {
+                    "id": "once",
+                    "prices": [{"periodicity": "ONE_TIME", "amount": 250.0, "currency": "RUB"}],
+                },
+                {
+                    "id": "usd",
+                    "prices": [{"periodicity": "ONE_TIME", "amount": 675.0, "currency": "USD"}],
+                },
+            ]
+        }
+    ]
+
+    # One-time offers win: recurring charges are not handled by the bot.
+    assert pick_lava_offer(products, Decimal("250.00")) == ("once", "ONE_TIME")
+    # A price nobody set up in Lava must stop the sale instead of charging another amount.
+    with pytest.raises(LavaOfferNotFoundError):
+        pick_lava_offer(products, Decimal("675"))
