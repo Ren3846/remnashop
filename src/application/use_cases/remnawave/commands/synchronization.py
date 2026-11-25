@@ -1,9 +1,10 @@
 from dataclasses import dataclass
+from typing import Optional
 
 from loguru import logger
 
 from src.application.common import Cryptographer, Interactor, Remnawave
-from src.application.common.dao import SubscriptionDao, UserDao
+from src.application.common.dao import PlanDao, SubscriptionDao, UserDao
 from src.application.common.policy import Permission
 from src.application.common.uow import UnitOfWork
 from src.application.dto import PlanSnapshotDto, RemnaSubscriptionDto, SubscriptionDto, UserDto
@@ -29,6 +30,7 @@ class SyncRemnaUser(Interactor[SyncRemnaUserDto, bool]):
         uow: UnitOfWork,
         user_dao: UserDao,
         subscription_dao: SubscriptionDao,
+        plan_dao: PlanDao,
         config: AppConfig,
         remnawave: Remnawave,
         cryptographer: Cryptographer,
@@ -36,6 +38,7 @@ class SyncRemnaUser(Interactor[SyncRemnaUserDto, bool]):
         self.uow = uow
         self.user_dao = user_dao
         self.subscription_dao = subscription_dao
+        self.plan_dao = plan_dao
         self.config = config
         self.remnawave = remnawave
         self.cryptographer = cryptographer
@@ -111,12 +114,39 @@ class SyncRemnaUser(Interactor[SyncRemnaUserDto, bool]):
             language=self.config.default_locale,
         )
 
+    async def _matching_plan_snapshot(
+        self,
+        remna_subscription: RemnaSubscriptionDto,
+    ) -> Optional[PlanSnapshotDto]:
+        # A subscription bought on the landing is created straight in the panel from one of
+        # our plans. Recognise it by its limits and squads so the bot shows the plan's name
+        # and can renew it; anything else stays a nameless import.
+        matches = [
+            plan
+            for plan in await self.plan_dao.get_all()
+            if not plan.is_trial
+            and plan.durations
+            and plan.traffic_limit == remna_subscription.traffic_limit
+            and plan.device_limit == remna_subscription.device_limit
+            and set(plan.internal_squads) == set(remna_subscription.internal_squads)
+        ]
+        if len(matches) != 1:
+            return None
+
+        plan = matches[0]
+        days_left = 0
+        if remna_subscription.expire_at:
+            days_left = max((remna_subscription.expire_at - datetime_now()).days, 0)
+        durations = sorted(duration.days for duration in plan.durations)
+        duration = next((days for days in durations if days >= days_left), durations[-1])
+        return PlanSnapshotDto.from_plan(plan, duration)
+
     async def _import_subscription(
         self,
         user_id: int,
         remna_subscription: RemnaSubscriptionDto,
     ) -> None:
-        plan = PlanSnapshotDto(
+        plan = await self._matching_plan_snapshot(remna_subscription) or PlanSnapshotDto(
             id=-1,
             name=IMPORTED_TAG,
             tag=remna_subscription.tag,

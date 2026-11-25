@@ -112,3 +112,50 @@ def test_recreated_or_first_panel_user_is_still_synced() -> None:
     # Bound panel user was deleted and re-created under a new id: sync must rebind.
     assert asyncio.run(sync_guard(16, False)._is_bound_to_another_panel_user(80, 17)) is False
     assert asyncio.run(sync_guard(None, True)._is_bound_to_another_panel_user(80, 17)) is False
+
+
+def plan_stub(name, gb, devices, squads=("sq",), days=(30, 90), trial=False):
+    return SimpleNamespace(
+        id=3,
+        name=name,
+        tag=None,
+        type="BOTH",
+        traffic_limit_strategy="MONTH_ROLLING",
+        traffic_limit=gb,
+        device_limit=devices,
+        internal_squads=list(squads),
+        external_squad=None,
+        is_trial=trial,
+        durations=[SimpleNamespace(days=d) for d in days],
+    )
+
+
+def matching(plans, gb, devices, squads=("sq",), days_left=29):
+    async def get_all():
+        return plans
+
+    interactor = object.__new__(SyncRemnaUser)
+    interactor.plan_dao = SimpleNamespace(get_all=get_all)
+    subscription = SimpleNamespace(
+        traffic_limit=gb,
+        device_limit=devices,
+        internal_squads=list(squads),
+        expire_at=NOW + timedelta(days=days_left, hours=12),
+    )
+    return asyncio.run(interactor._matching_plan_snapshot(subscription))
+
+
+def test_imported_landing_subscription_gets_its_plan_name() -> None:
+    plans = [plan_stub("Базовый", 600, 3), plan_stub("Расширенный", 1200, 6)]
+    snapshot = matching(plans, 600, 3)
+    assert (snapshot.name, snapshot.duration) == ("Базовый", 30)
+    # A yearly purchase must not be renewed as a monthly one by mistake.
+    assert matching(plans, 600, 3, days_left=80).duration == 90
+
+
+def test_unrecognised_or_ambiguous_subscription_stays_a_plain_import() -> None:
+    plans = [plan_stub("Базовый", 600, 3), plan_stub("Двойник", 600, 3)]
+    assert matching(plans, 600, 3) is None
+    assert matching([plan_stub("Базовый", 600, 3)], 100, 1) is None
+    assert matching([plan_stub("Базовый", 600, 3)], 600, 3, squads=("other",)) is None
+    assert matching([plan_stub("Пробный", 600, 3, trial=True)], 600, 3) is None
