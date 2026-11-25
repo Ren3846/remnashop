@@ -31,7 +31,11 @@ from src.core.constants import (
 from src.core.enums import Currency, PaymentGatewayType, PlanAvailability, PlanType
 from src.core.utils.converters import days_to_datetime, gb_to_bytes
 from src.core.utils.time import datetime_now
-from src.infrastructure.payment_gateways.lava import LavaOfferNotFoundError, resolve_lava_offer
+from src.infrastructure.payment_gateways.lava import (
+    LavaOfferNotFoundError,
+    fetch_lava_products,
+    pick_lava_offer,
+)
 
 _REDIS_PREFIX = "web_payment:"
 # A Lava invoice can be paid long after it was created; keep the order for a week.
@@ -39,6 +43,9 @@ _REDIS_TTL = 60 * 60 * 24 * 7
 # A paid landing subscription is remembered for as long as Lava may keep charging for it:
 # the longest period is a year, and every renewal pushes the record forward.
 _SUBSCRIPTION_TTL = 60 * 60 * 24 * 400
+# Lava's product list takes seconds to load, and the buyer is waiting for the payment page.
+_LAVA_PRODUCTS_KEY = "lava:products"
+_LAVA_PRODUCTS_TTL = 120
 _SOURCE_RE = re.compile(r"[^a-zA-Z0-9_.-]")
 _SOURCE_MAX_LEN = 48
 _PUBLIC_AVAILABILITY = (PlanAvailability.ALL, PlanAvailability.NEW)
@@ -127,7 +134,7 @@ class LandingPaymentService:
         ) as client:
             try:
                 # Never charge a price other than the one shown on the site.
-                resolved_offer_id, lava_periodicity = await resolve_lava_offer(client, amount)
+                resolved_offer_id, lava_periodicity = await self._resolve_offer(client, amount)
             except LavaOfferNotFoundError as e:
                 logger.critical(f"Landing plan '{plan_snapshot.name}' for {days} days: {e}")
                 raise RuntimeError(str(e)) from e
@@ -191,6 +198,18 @@ class LandingPaymentService:
             "invoiceId": payment_id,
             "orderId": order_id,
         }
+
+    async def _resolve_offer(self, client: AsyncClient, amount: Decimal) -> tuple[str, str]:
+        cached = await self.redis.get(_LAVA_PRODUCTS_KEY)
+        if cached:
+            try:
+                return pick_lava_offer(orjson.loads(cached), amount)
+            except LavaOfferNotFoundError:
+                pass  # the offer may have been added a moment ago: ask Lava again
+
+        products = await fetch_lava_products(client)
+        await self.redis.setex(_LAVA_PRODUCTS_KEY, _LAVA_PRODUCTS_TTL, orjson.dumps(products))
+        return pick_lava_offer(products, amount)
 
     async def try_fulfill(self, payment_id: UUID) -> bool:
         key = landing_redis_key(payment_id)

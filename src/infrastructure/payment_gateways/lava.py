@@ -83,10 +83,14 @@ def pick_lava_offer(products: list[dict[str, Any]], amount: Decimal) -> tuple[st
     return offer_id, periodicity
 
 
-async def resolve_lava_offer(client: AsyncClient, amount: Decimal) -> tuple[str, str]:
+async def fetch_lava_products(client: AsyncClient) -> list[dict[str, Any]]:
     response = await client.get("/api/v2/products", params={"showAllSubscriptionPeriods": "true"})
     response.raise_for_status()
-    return pick_lava_offer(orjson.loads(response.content).get("items") or [], amount)
+    return orjson.loads(response.content).get("items") or []
+
+
+async def resolve_lava_offer(client: AsyncClient, amount: Decimal) -> tuple[str, str]:
+    return pick_lava_offer(await fetch_lava_products(client), amount)
 
 
 # https://gate.lava.top/docs
