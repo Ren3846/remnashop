@@ -88,6 +88,7 @@ class LandingPaymentService:
             {
                 "code": plan.public_code,
                 "name": plan.name,
+                "description": plan.description or "",
                 "devices": plan.device_limit,
                 "trafficGb": plan.traffic_limit,
                 "durations": [
