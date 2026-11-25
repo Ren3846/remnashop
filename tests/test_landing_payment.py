@@ -260,3 +260,21 @@ def test_failed_extension_can_be_retried() -> None:
     users.fail = False
     assert asyncio.run(service.try_renew(renewal, first)) is True
     assert len(users.updates) == 1
+
+
+def test_second_invoice_right_after_payment_is_refused() -> None:
+    from src.application.services.landing_payment import LandingAlreadyPaidError
+
+    redis, users = FakeRedis(), FakeUsers()
+    first = uuid4()
+    redis.data[landing_redis_key(first)] = order()
+    service = make_service(redis, users)
+    asyncio.run(service.try_fulfill(first))
+
+    async def active_gateway(gateway_type):
+        raise AssertionError("must be refused before anything is created")
+
+    service.payment_gateway_dao = SimpleNamespace(get_by_type=active_gateway)
+    # The gateway showed an error after charging: the buyer presses "pay" again.
+    with pytest.raises(LandingAlreadyPaidError):
+        asyncio.run(service.create_lava_payment_link(email=" Buyer@Example.com ", days=30))

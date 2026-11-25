@@ -9,7 +9,10 @@ from pydantic import BaseModel, EmailStr, Field
 
 from src.application.common.dao import PaymentGatewayDao
 from src.application.dto.payment_gateway import LavaGatewaySettingsDto
-from src.application.services.landing_payment import LandingPaymentService
+from src.application.services.landing_payment import (
+    LandingAlreadyPaidError,
+    LandingPaymentService,
+)
 from src.core.config import AppConfig
 from src.core.enums import PaymentGatewayType
 from src.infrastructure.payment_gateways.lava import verify_lava_webhook
@@ -72,6 +75,14 @@ async def create_lava_link_landing(
             plan_code=body.plan,
             source=body.source,
         )
+    except LandingAlreadyPaidError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Оплата на эту почту уже прошла. Письмо со ссылкой для подключения отправлено — "
+                "проверьте «Входящие» и «Спам». Повторно платить не нужно."
+            ),
+        ) from e
     except RuntimeError as e:
         message = str(e)
         status_code = (

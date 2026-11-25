@@ -44,6 +44,9 @@ _REDIS_TTL = 60 * 60 * 24 * 7
 # the longest period is a year, and every renewal pushes the record forward.
 _SUBSCRIPTION_TTL = 60 * 60 * 24 * 400
 # Lava's product list takes seconds to load, and the buyer is waiting for the payment page.
+# After a successful payment the gateway may still show the buyer an error; a second
+# invoice for the same email within this window would simply charge them twice.
+_RECENTLY_PAID_TTL = 60 * 15
 _LAVA_PRODUCTS_KEY = "lava:products"
 _LAVA_PRODUCTS_TTL = 120
 _SOURCE_RE = re.compile(r"[^a-zA-Z0-9_.-]")
@@ -61,6 +64,14 @@ def landing_subscription_key(payment_id: UUID | str) -> str:
 
 def landing_renewal_key(payment_id: UUID | str) -> str:
     return f"web_renewal:{payment_id}"
+
+
+def landing_recently_paid_key(email: str) -> str:
+    return f"web_paid:{email.strip().lower()}"
+
+
+class LandingAlreadyPaidError(RuntimeError):
+    pass
 
 
 def normalize_source(source: Optional[str]) -> Optional[str]:
@@ -113,6 +124,9 @@ class LandingPaymentService:
         plan_code: Optional[str] = None,
         source: Optional[str] = None,
     ) -> dict[str, Any]:
+        if await self.redis.get(landing_recently_paid_key(email)):
+            raise LandingAlreadyPaidError(email)
+
         gateway = await self.payment_gateway_dao.get_by_type(PaymentGatewayType.LAVA)
         if (
             not gateway
@@ -255,6 +269,8 @@ class LandingPaymentService:
             _SUBSCRIPTION_TTL,
             orjson.dumps({"email": email, "days": days, "remna_id": remna_user.id}),
         )
+
+        await self.redis.setex(landing_recently_paid_key(email), _RECENTLY_PAID_TTL, b"1")
 
         try:
             await self._send_activation_email(
