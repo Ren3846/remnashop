@@ -48,6 +48,12 @@ class SyncRemnaUser(Interactor[SyncRemnaUserDto, bool]):
 
             if not user and remna_user.telegram_id:
                 user = await self.user_dao.get_by_telegram_id(remna_user.telegram_id)
+                if user and await self._is_bound_to_another_panel_user(user.id, remna_user.id):
+                    logger.info(
+                        f"RemnaUser '{remna_user.id}' shares a Telegram id with {user.log}, "
+                        f"whose subscription belongs to another panel user: sync skipped"
+                    )
+                    return False
 
             if not user and data.creating:
                 logger.debug(f"User '{remna_user.id}' not found in bot, creating new user")
@@ -86,6 +92,15 @@ class SyncRemnaUser(Interactor[SyncRemnaUserDto, bool]):
                 await self.uow.commit()
                 logger.info(f"Sync completed for user '{remna_user.telegram_id}'")
                 return changed
+
+    async def _is_bound_to_another_panel_user(self, user_id: int, remna_id: int) -> bool:
+        # One person can own two panel users (a bot purchase and a landing purchase).
+        # A Telegram id alone must not let one of them overwrite the other's subscription.
+        # A bound panel user that no longer exists does not count: that is a re-creation.
+        bound = await self.subscription_dao.get_current(user_id)
+        if not bound or bound.user_remna_id in (None, remna_id):
+            return False
+        return await self.remnawave.get_user_by_id(bound.user_remna_id) is not None
 
     def _create_user_dto(self, data: RemnaUserDto, referral_code: str) -> UserDto:
         return UserDto(
