@@ -28,6 +28,9 @@ log = logging.getLogger("traffic_bot")
 # Telegram allows 64 chars of [A-Za-z0-9_-] in a start parameter; "ad_" takes three of them.
 TAG_RE = re.compile(r"^[A-Za-z0-9_-]{1,61}$")
 DEFAULT_BUTTON = "🚀 Подключить VPN"
+# Bot API 9.4 button colours: primary = blue, success = green, danger = red.
+BUTTON_STYLES = {"primary", "success", "danger"}
+DEFAULT_STYLE = "primary"
 
 
 class ConfigError(ValueError):
@@ -39,6 +42,7 @@ class Landing:
     tag: str
     text: str
     button: str
+    style: Optional[str]
     # Extra tags this bot accepts from its own link (t.me/<traffic bot>?start=<tag>),
     # for several creatives leading to one traffic bot.
     extra_tags: frozenset[str]
@@ -61,6 +65,15 @@ def _check_tag(tag: Any) -> str:
     if not isinstance(tag, str) or not TAG_RE.match(tag):
         raise ConfigError(f"Bad tag {tag!r}: latin letters, digits, '_' and '-' only, up to 61")
     return tag
+
+
+def _check_style(style: Any) -> Optional[str]:
+    """None or "default" keeps Telegram's ordinary grey button."""
+    if style in (None, "", "default"):
+        return None
+    if style not in BUTTON_STYLES:
+        raise ConfigError(f"Bad style {style!r}: one of {sorted(BUTTON_STYLES)} or 'default'")
+    return str(style)
 
 
 def load_config(raw: dict[str, Any]) -> tuple[str, dict[str, Landing]]:
@@ -88,6 +101,7 @@ def load_config(raw: dict[str, Any]) -> tuple[str, dict[str, Landing]]:
             tag=_check_tag(item.get("tag")),
             text=text,
             button=item.get("button") or defaults.get("button") or DEFAULT_BUTTON,
+            style=_check_style(item.get("style", defaults.get("style", DEFAULT_STYLE))),
             extra_tags=frozenset(_check_tag(t) for t in item.get("extra_tags", [])),
         )
     return target, result
@@ -102,7 +116,13 @@ def build_dispatcher(target: str, landings: dict[int, Landing]) -> Dispatcher:
         tag = pick_tag(landing, message.text)
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=landing.button, url=build_url(target, tag))]
+                [
+                    InlineKeyboardButton(
+                        text=landing.button,
+                        url=build_url(target, tag),
+                        style=landing.style,
+                    )
+                ]
             ]
         )
         await message.answer(landing.text, reply_markup=keyboard, disable_web_page_preview=True)

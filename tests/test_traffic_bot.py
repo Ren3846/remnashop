@@ -2,7 +2,9 @@ import pytest
 
 from traffic_bot.bot import ConfigError, Landing, build_url, load_config, pick_tag
 
-LANDING = Landing(tag="vpn1", text="t", button="b", extra_tags=frozenset({"vpn1_a"}))
+LANDING = Landing(
+    tag="vpn1", text="t", button="b", style="primary", extra_tags=frozenset({"vpn1_a"})
+)
 
 
 def test_url_is_an_ad_deeplink_of_the_main_bot() -> None:
@@ -38,6 +40,16 @@ def test_config_uses_defaults_and_per_bot_overrides() -> None:
     assert target == "viivpn_bot"
     assert bots["1:a"].text == "common" and bots["1:a"].button
     assert (bots["2:b"].text, bots["2:b"].button) == ("own", "Go")
+    assert bots["1:a"].style == "primary"
+
+
+def test_style_can_be_switched_off_and_is_validated() -> None:
+    raw = {"target": "viivpn_bot", "bots": [{"token": "1:a", "tag": "x", "text": "t"}]}
+    raw["bots"][0]["style"] = "default"
+    assert load_config(raw)[1]["1:a"].style is None
+    raw["bots"][0]["style"] = "blue"
+    with pytest.raises(ConfigError):
+        load_config(raw)
 
 
 @pytest.mark.parametrize(
@@ -88,3 +100,4 @@ async def test_start_is_answered_with_one_button_to_the_main_bot(monkeypatch) ->
     assert call.text == "t" and call.chat_id == 7
     assert len(rows) == 1 and len(rows[0]) == 1
     assert rows[0][0].url == "https://t.me/viivpn_bot?start=ad_vpn1"
+    assert rows[0][0].style == "primary"
