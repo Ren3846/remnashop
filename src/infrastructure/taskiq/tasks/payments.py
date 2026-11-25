@@ -4,9 +4,11 @@ from uuid import UUID
 from dishka.integrations.taskiq import FromDishka, inject
 from loguru import logger
 
+from src.application.common.dao import UserDao
 from src.application.services import LandingPaymentService
 from src.application.use_cases.gateways.commands.payment import ProcessPayment, ProcessPaymentDto
 from src.application.use_cases.misc.commands.maintenance import CancelOldTransactions
+from src.application.use_cases.user import LinkUserEmail, LinkUserEmailDto
 from src.core.enums import PaymentGatewayType, TransactionStatus
 from src.infrastructure.taskiq.broker import broker
 
@@ -24,13 +26,15 @@ async def handle_payment_transaction_task(
 ) -> None:
     # Purchases made on the landing have no bot transaction: the order lives in Redis
     # under the Lava contract id. Fulfil it here, otherwise the customer pays and gets nothing.
-    if (
-        gateway_type == PaymentGatewayType.LAVA
-        and payment_status == TransactionStatus.COMPLETED
-        and await landing_payment.try_fulfill(payment_id)
-    ):
-        logger.info(f"Landing payment '{payment_id}' fulfilled")
-        return
+    if gateway_type == PaymentGatewayType.LAVA and payment_status == TransactionStatus.COMPLETED:
+        email = await landing_payment.fulfill(payment_id)
+        if email:
+            logger.info(f"Landing payment '{payment_id}' fulfilled")
+            try:
+                await attach_landing_purchase_task.kiq(email)  # type: ignore[call-overload]
+            except Exception as e:
+                logger.error(f"Could not queue attaching the landing purchase for {email}: {e}")
+            return
 
     # A recurring Lava charge belongs to the subscription opened by its first contract.
     is_recurring = (
@@ -50,6 +54,28 @@ async def handle_payment_transaction_task(
             parent_payment_id=parent_payment_id if is_recurring else None,
         )
     )
+
+
+@broker.task()
+@inject(patch_module=True)
+async def attach_landing_purchase_task(
+    email: str,
+    *,
+    user_dao: FromDishka[UserDao],
+    link_user_email: FromDishka[LinkUserEmail],
+) -> None:
+    # The buyer may already use the bot with this email confirmed by a code. Then the
+    # purchase shows up there right away, without asking them to link the email again.
+    user = await user_dao.get_by_email(email)
+    if not user or not user.is_email_verified or user.telegram_id is None:
+        return
+
+    try:
+        await link_user_email.system(LinkUserEmailDto(telegram_id=user.telegram_id, email=email))
+        logger.info(f"Landing purchase for {email} attached to bot user {user.log}")
+    except Exception as e:
+        # The purchase itself is delivered by email; the buyer can still link it by hand.
+        logger.error(f"Landing purchase for {email} was not attached to {user.log}: {e}")
 
 
 @broker.task(schedule=[{"cron": "*/30 * * * *"}])

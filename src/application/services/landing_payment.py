@@ -226,11 +226,15 @@ class LandingPaymentService:
         return pick_lava_offer(products, amount)
 
     async def try_fulfill(self, payment_id: UUID) -> bool:
+        return await self.fulfill(payment_id) is not None
+
+    async def fulfill(self, payment_id: UUID) -> Optional[str]:
+        """Deliver a paid landing order. Returns the buyer's email, None if not a landing order."""
         key = landing_redis_key(payment_id)
         # Atomic claim: Lava repeats webhooks, only one delivery may create the panel user.
         raw = await self.redis.getdel(key)
         if not raw:
-            return False
+            return None
 
         payment_data = orjson.loads(raw)
         email: str = payment_data["email"]
@@ -282,7 +286,7 @@ class LandingPaymentService:
                 f"Landing user '{username}' created but activation email to {email} failed: {e}"
             )
             raise
-        return True
+        return email
 
     async def try_renew(self, payment_id: UUID, parent_payment_id: UUID) -> bool:
         """Extend a landing subscription after a recurring Lava charge.
