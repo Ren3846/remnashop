@@ -1,0 +1,17 @@
+# Runs on the main bot's image (it already has aiogram), so nothing extra is built.
+# Start:   docker compose -f traffic_bot/docker-compose.yml up -d
+# Reload after editing bots.json:  docker compose -f traffic_bot/docker-compose.yml restart
+services:
+  traffic-bot:
+    image: remnashop-local:latest
+    container_name: traffic-bot
+    restart: unless-stopped
+    command: python /traffic_bot/bot.py
+    volumes:
+      - ./bot.py:/traffic_bot/bot.py:ro
+      - ./bots.json:/traffic_bot/bots.json:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: 3

@@ -1,0 +1,20 @@
+{
+  "target": "viivpn_bot",
+  "defaults": {
+    "text": "<b>ViVPN — быстрый VPN без ограничений</b>\n\n• YouTube, Instagram, ChatGPT и любые сайты\n• до 9 устройств на одной подписке\n• iPhone, Android, Windows, macOS\n• от 250 ₽ в месяц\n\nПодключение занимает минуту 👇",
+    "button": "🚀 Подключить VPN"
+  },
+  "bots": [
+    {
+      "token": "123456:REPLACE_WITH_TOKEN_FROM_BOTFATHER",
+      "tag": "vpn1"
+    },
+    {
+      "token": "654321:SECOND_BOT_TOKEN",
+      "tag": "ads1",
+      "extra_tags": ["ads1_a", "ads1_b"],
+      "text": "Свой текст для этого бота (можно не указывать — возьмётся общий).",
+      "button": "Получить VPN"
+    }
+  ]
+}

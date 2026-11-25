@@ -47,3 +47,5 @@ dist/
 *.egg-info/
 *.egg
 frontend/
+# Traffic bots
+traffic_bot/bots.json
