@@ -1,5 +1,6 @@
 {
   "target": "viivpn_bot",
+  "admins": [111111111],
   "defaults": {
     "text": "<b>ViVPN — быстрый VPN с обходом белых списков</b>\n\n• работает там, где обычные VPN блокируют\n• YouTube, Instagram, ChatGPT и любые сайты\n• до 9 устройств на одной подписке\n• iPhone, Android, Windows, macOS\n• от 250 ₽ в месяц\n\nПодключение занимает минуту 👇",
     "button": "🚀 Подключить VPN",

@@ -10,6 +10,9 @@ services:
     volumes:
       - ./bot.py:/traffic_bot/bot.py:ro
       - ./bots.json:/traffic_bot/bots.json:ro
+      - ./data:/data
+    environment:
+      - TRAFFIC_BOTS_DB=/data/stats.sqlite
     logging:
       driver: json-file
       options:

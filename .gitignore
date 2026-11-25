@@ -49,3 +49,4 @@ dist/
 frontend/
 # Traffic bots
 traffic_bot/bots.json
+traffic_bot/data/

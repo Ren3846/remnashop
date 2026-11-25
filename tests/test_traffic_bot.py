@@ -101,3 +101,44 @@ async def test_start_is_answered_with_one_button_to_the_main_bot(monkeypatch) ->
     assert len(rows) == 1 and len(rows[0]) == 1
     assert rows[0][0].url == "https://t.me/viivpn_bot?start=ad_vpn1"
     assert rows[0][0].style == "primary"
+
+
+async def test_visitors_are_counted_per_tag_and_admins_see_stats(monkeypatch) -> None:
+    from datetime import UTC, datetime
+
+    from aiogram import Bot
+    from aiogram.types import Chat, Message, Update
+
+    from traffic_bot.bot import Stats, build_dispatcher
+
+    sent = []
+
+    async def fake_call(self, method, request_timeout=None):  # noqa: ANN001, ANN202
+        sent.append(method)
+
+    monkeypatch.setattr(Bot, "__call__", fake_call)
+    bot = Bot("42:token")
+    stats = Stats(":memory:")
+    dp = build_dispatcher("viivpn_bot", {42: LANDING}, stats, frozenset({99}), {42: "tbot"})
+
+    async def say(chat_id: int, text: str, n: int) -> None:
+        message = Message(
+            message_id=n,
+            date=datetime.now(tz=UTC),
+            chat=Chat(id=chat_id, type="private"),
+            text=text,
+        )
+        await dp.feed_update(bot, Update(update_id=n, message=message))
+
+    await say(7, "/start", 1)
+    await say(7, "/start", 2)
+    await say(8, "/start vpn1_a", 3)
+    await say(7, "/stats", 4)  # not an admin: just the landing again
+    await say(99, "/start", 5)  # admin visits are not counted
+
+    assert stats.summary() == [(42, "vpn1", 1, 1, 3), (42, "vpn1_a", 1, 1, 1)]
+
+    await say(99, "/stats", 6)
+    report = sent[-1].text
+    assert "@tbot" in report and "людей: <b>1</b>" in report and "vpn1_a" in report
+    assert sent[-1].reply_markup is None
