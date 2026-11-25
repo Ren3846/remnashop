@@ -34,11 +34,14 @@ def link_email(bound, by_email):
 
     async def link_identity(remna_id, *, telegram_id=None, email=None):
         calls.identity.append(remna_id)
+        return SimpleNamespace(id=remna_id, telegram_id=telegram_id, linked=True)
 
     async def clear_current_subscription(user_id):
         calls.cleared.append(user_id)
 
     async def sync(dto):
+        # Must be the panel user as returned after linking, with the Telegram id on it.
+        assert dto.remna_user.linked and dto.remna_user.telegram_id == 555
         calls.synced.append(dto.remna_user.id)
 
     interactor = object.__new__(LinkUserEmail)

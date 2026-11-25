@@ -103,8 +103,10 @@ class LinkUserEmail(Interactor[LinkUserEmailDto, UserDto]):
             )
 
         if landing_user:
-            await self._ensure_remna_identity(landing_user.id, user.telegram_id, email)
-            await self.sync_remna_user.system(SyncRemnaUserDto(landing_user, creating=False))
+            # Sync the panel user as it is after linking: it is found by the Telegram id
+            # that was only just written to it.
+            linked = await self._ensure_remna_identity(landing_user.id, user.telegram_id, email)
+            await self.sync_remna_user.system(SyncRemnaUserDto(linked, creating=False))
             return
 
         if remna_by_tg:
@@ -115,8 +117,8 @@ class LinkUserEmail(Interactor[LinkUserEmailDto, UserDto]):
         remna_id: int,
         telegram_id: Optional[int],
         email: str,
-    ) -> None:
-        await self.remnawave.link_identity(
+    ) -> UserResponseDto:
+        return await self.remnawave.link_identity(
             remna_id,
             telegram_id=telegram_id,
             email=email,
