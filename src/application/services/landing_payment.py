@@ -1,5 +1,6 @@
 import re
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 from typing import Any, Optional
 from uuid import UUID
@@ -10,7 +11,8 @@ from httpx import AsyncClient, HTTPStatusError
 from loguru import logger
 from redis.asyncio import Redis
 from remnapy import RemnawaveSDK
-from remnapy.models import CreateUserRequestDto
+from remnapy.enums.users import UserStatus
+from remnapy.models import CreateUserRequestDto, UpdateUserRequestDto
 
 from src.application.common import BotService
 from src.application.common.dao import PaymentGatewayDao, PlanDao
@@ -28,11 +30,15 @@ from src.core.constants import (
 )
 from src.core.enums import Currency, PaymentGatewayType, PlanAvailability, PlanType
 from src.core.utils.converters import days_to_datetime, gb_to_bytes
+from src.core.utils.time import datetime_now
 from src.infrastructure.payment_gateways.lava import LavaOfferNotFoundError, resolve_lava_offer
 
 _REDIS_PREFIX = "web_payment:"
 # A Lava invoice can be paid long after it was created; keep the order for a week.
 _REDIS_TTL = 60 * 60 * 24 * 7
+# A paid landing subscription is remembered for as long as Lava may keep charging for it:
+# the longest period is a year, and every renewal pushes the record forward.
+_SUBSCRIPTION_TTL = 60 * 60 * 24 * 400
 _SOURCE_RE = re.compile(r"[^a-zA-Z0-9_.-]")
 _SOURCE_MAX_LEN = 48
 _PUBLIC_AVAILABILITY = (PlanAvailability.ALL, PlanAvailability.NEW)
@@ -40,6 +46,14 @@ _PUBLIC_AVAILABILITY = (PlanAvailability.ALL, PlanAvailability.NEW)
 
 def landing_redis_key(payment_id: UUID | str) -> str:
     return f"{_REDIS_PREFIX}{payment_id}"
+
+
+def landing_subscription_key(payment_id: UUID | str) -> str:
+    return f"web_subscription:{payment_id}"
+
+
+def landing_renewal_key(payment_id: UUID | str) -> str:
+    return f"web_renewal:{payment_id}"
 
 
 def normalize_source(source: Optional[str]) -> Optional[str]:
@@ -214,6 +228,14 @@ class LandingPaymentService:
             logger.exception(f"Failed to create Remnawave user for landing email={email}: {e}")
             raise
 
+        # Lava charges this subscription again on its own; the renewal is matched to the
+        # panel user by this record (never by email or username).
+        await self.redis.setex(
+            landing_subscription_key(payment_id),
+            _SUBSCRIPTION_TTL,
+            orjson.dumps({"email": email, "days": days, "remna_id": remna_user.id}),
+        )
+
         try:
             await self._send_activation_email(
                 email=email, subscription_url=subscription_url, days=days
@@ -224,6 +246,62 @@ class LandingPaymentService:
                 f"Landing user '{username}' created but activation email to {email} failed: {e}"
             )
             raise
+        return True
+
+    async def try_renew(self, payment_id: UUID, parent_payment_id: UUID) -> bool:
+        """Extend a landing subscription after a recurring Lava charge.
+
+        Returns False when the first payment was not a landing purchase.
+        """
+        subscription_key = landing_subscription_key(parent_payment_id)
+        raw = await self.redis.get(subscription_key)
+        if not raw:
+            return False
+
+        # Lava repeats webhooks: one charge extends the access once.
+        renewal_key = landing_renewal_key(payment_id)
+        if not await self.redis.set(renewal_key, b"1", nx=True, ex=_SUBSCRIPTION_TTL):
+            return True
+
+        record = orjson.loads(raw)
+        email: str = record["email"]
+        days: int = record["days"]
+        remna_id: int = record["remna_id"]
+
+        try:
+            remna_user = await self.remnawave_sdk.users.get_user_by_id(remna_id)
+            expire_at = max(remna_user.expire_at, datetime_now()) + timedelta(days=days)
+            await self.remnawave_sdk.users.update_user(
+                UpdateUserRequestDto(id=remna_id, expire_at=expire_at, status=UserStatus.ACTIVE)
+            )
+        except Exception as e:
+            # Charged but not extended: release the claim so a webhook retry can do it.
+            await self.redis.delete(renewal_key)
+            logger.critical(
+                f"Recurring payment '{payment_id}' for landing user id={remna_id} "
+                f"({email}) was charged but not extended: {e}"
+            )
+            raise
+
+        await self.redis.expire(subscription_key, _SUBSCRIPTION_TTL)
+        logger.info(
+            f"Landing user id={remna_id} ({email}) extended by {days} days until "
+            f"{expire_at:%Y-%m-%d}, payment={payment_id}"
+        )
+
+        try:
+            await self._send_email(
+                email=email,
+                subject="Ваша VPN-подписка продлена",
+                html=(
+                    "<h2>Подписка продлена</h2>"
+                    f"<p>Оплата прошла, доступ продлён на <b>{days} дней</b> — "
+                    f"до {expire_at:%d.%m.%Y}.</p>"
+                    "<p>Ничего настраивать не нужно: ссылка-ключ в приложении остаётся прежней.</p>"
+                ),
+            )
+        except Exception as e:
+            logger.error(f"Renewal email to {email} failed: {e}")
         return True
 
     async def _public_plans(self) -> list[PlanDto]:
@@ -291,11 +369,6 @@ class LandingPaymentService:
         )
 
     async def _send_activation_email(self, email: str, subscription_url: str, days: int) -> None:
-        mailgun = self._get_mailgun_config()
-        if mailgun is None:
-            logger.warning("Mailgun is not configured, skipping landing activation email")
-            return
-
         link_url = await self.bot_service.get_link_email_url()
         html = (
             "<h2>Спасибо за покупку!</h2>"
@@ -325,20 +398,23 @@ class LandingPaymentService:
             "может украсть вашу ссылку-ключ.</p>"
         )
 
+        await self._send_email(email=email, subject="Ваша VPN-подписка активирована", html=html)
+
+    async def _send_email(self, email: str, subject: str, html: str) -> None:
+        mailgun = self._get_mailgun_config()
+        if mailgun is None:
+            logger.warning(f"Mailgun is not configured, skipping landing email '{subject}'")
+            return
+
         async with AsyncClient(timeout=10) as client:
             response = await client.post(
                 f"{mailgun.base_url}/v3/{mailgun.domain}/messages",
                 auth=("api", mailgun.api_key.get_secret_value()),
-                data={
-                    "from": mailgun.from_email,
-                    "to": email,
-                    "subject": "Ваша VPN-подписка активирована",
-                    "html": html,
-                },
+                data={"from": mailgun.from_email, "to": email, "subject": subject, "html": html},
             )
             response.raise_for_status()
 
-        logger.info(f"Landing activation email sent to {email}")
+        logger.info(f"Landing email '{subject}' sent to {email}")
 
     def _get_mailgun_config(self) -> MailgunConfig | None:
         if self.config.mailgun is not None:

@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -22,11 +23,37 @@ class FakeRedis:
     async def setex(self, key: str, ttl: int, value: bytes) -> None:
         self.data[key] = value
 
+    async def get(self, key: str):
+        return self.data.get(key)
+
+    async def set(self, key: str, value: bytes, nx: bool = False, ex: int | None = None):
+        if nx and key in self.data:
+            return None
+        self.data[key] = value
+        return True
+
+    async def delete(self, key: str) -> None:
+        self.data.pop(key, None)
+
+    async def expire(self, key: str, ttl: int) -> None:
+        pass
+
 
 class FakeUsers:
     def __init__(self, fail: bool = False) -> None:
         self.fail = fail
         self.requests = []
+        self.updates = []
+        self.expire_at = datetime.now(timezone.utc) + timedelta(days=5)
+
+    async def get_user_by_id(self, remna_id: int):
+        return SimpleNamespace(id=remna_id, expire_at=self.expire_at)
+
+    async def update_user(self, request):
+        if self.fail:
+            raise RuntimeError("panel down")
+        self.updates.append(request)
+        self.expire_at = request.expire_at
 
     async def create_user(self, request):
         if self.fail:
@@ -191,3 +218,45 @@ def test_lava_offer_is_picked_by_price() -> None:
     # A price nobody set up in Lava must stop the sale instead of charging another amount.
     with pytest.raises(LavaOfferNotFoundError):
         pick_lava_offer(products, Decimal("675"))
+
+
+def test_recurring_charge_extends_landing_user_once() -> None:
+    redis, users = FakeRedis(), FakeUsers()
+    first, renewal = uuid4(), uuid4()
+    redis.data[landing_redis_key(first)] = order()
+    service = make_service(redis, users)
+
+    async def fake_email(email: str, subject: str, html: str) -> None:
+        service.sent.append((email, subject))
+
+    service._send_email = fake_email
+    asyncio.run(service.try_fulfill(first))
+    paid_until = users.expire_at
+
+    assert asyncio.run(service.try_renew(renewal, first)) is True
+    # The same charge delivered twice must not add a second month.
+    assert asyncio.run(service.try_renew(renewal, first)) is True
+    assert len(users.updates) == 1
+    assert users.updates[0].id == 77
+    assert users.expire_at == paid_until + timedelta(days=30)
+    assert service.sent[-1] == ("buyer@example.com", "Ваша VPN-подписка продлена")
+
+
+def test_recurring_charge_of_a_bot_purchase_is_left_to_the_bot() -> None:
+    service = make_service(FakeRedis(), FakeUsers())
+    assert asyncio.run(service.try_renew(uuid4(), uuid4())) is False
+
+
+def test_failed_extension_can_be_retried() -> None:
+    redis, users = FakeRedis(), FakeUsers()
+    first, renewal = uuid4(), uuid4()
+    redis.data[landing_redis_key(first)] = order()
+    service = make_service(redis, users)
+    asyncio.run(service.try_fulfill(first))
+
+    users.fail = True
+    with pytest.raises(RuntimeError):
+        asyncio.run(service.try_renew(renewal, first))
+    users.fail = False
+    assert asyncio.run(service.try_renew(renewal, first)) is True
+    assert len(users.updates) == 1

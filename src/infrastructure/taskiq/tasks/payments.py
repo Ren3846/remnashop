@@ -1,3 +1,4 @@
+from typing import Optional
 from uuid import UUID
 
 from dishka.integrations.taskiq import FromDishka, inject
@@ -16,6 +17,8 @@ async def handle_payment_transaction_task(
     payment_id: UUID,
     payment_status: TransactionStatus,
     gateway_type: PaymentGatewayType,
+    parent_payment_id: Optional[UUID] = None,
+    *,
     process_payment: FromDishka[ProcessPayment],
     landing_payment: FromDishka[LandingPaymentService],
 ) -> None:
@@ -29,11 +32,22 @@ async def handle_payment_transaction_task(
         logger.info(f"Landing payment '{payment_id}' fulfilled")
         return
 
+    # A recurring Lava charge belongs to the subscription opened by its first contract.
+    is_recurring = (
+        gateway_type == PaymentGatewayType.LAVA
+        and payment_status == TransactionStatus.COMPLETED
+        and parent_payment_id is not None
+    )
+    if is_recurring and await landing_payment.try_renew(payment_id, parent_payment_id):
+        logger.info(f"Landing subscription renewed by recurring payment '{payment_id}'")
+        return
+
     await process_payment.system(
         ProcessPaymentDto(
             payment_id=payment_id,
             new_transaction_status=payment_status,
             gateway_type=gateway_type,
+            parent_payment_id=parent_payment_id if is_recurring else None,
         )
     )
 

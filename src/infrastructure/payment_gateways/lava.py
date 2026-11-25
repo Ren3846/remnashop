@@ -92,6 +92,7 @@ async def resolve_lava_offer(client: AsyncClient, amount: Decimal) -> tuple[str,
 # https://gate.lava.top/docs
 class LavaGateway(BasePaymentGateway):
     _client: AsyncClient
+    parent_payment_id: Optional[UUID] = None
 
     API_BASE: Final[str] = "https://gate.lava.top"
 
@@ -153,7 +154,7 @@ class LavaGateway(BasePaymentGateway):
             logger.exception(f"Unexpected error creating Lava.top payment: {e}")
             raise
 
-    async def handle_webhook(self, request: Request) -> tuple[UUID, TransactionStatus]:
+    async def handle_webhook(self, request: Request) -> Optional[tuple[UUID, TransactionStatus]]:
         logger.debug("Received Lava.top webhook request")
 
         body = await request.body()
@@ -175,15 +176,24 @@ class LavaGateway(BasePaymentGateway):
             f"parent='{webhook_data.get('parentContractId')}'"
         )
 
+        # Set only for a recurring charge: the id of the first contract of that subscription.
+        self.parent_payment_id = None
+
         match event_type:
-            case "payment.success" | "subscription.recurring.payment.success":
+            case "payment.success":
                 transaction_status = TransactionStatus.COMPLETED
-            case (
-                "payment.failed"
-                | "subscription.recurring.payment.failed"
-                | "subscription.cancelled"
-            ):
+            case "subscription.recurring.payment.success":
+                parent_contract_id = webhook_data.get("parentContractId")
+                if not parent_contract_id:
+                    raise ValueError("Lava.top recurring payment without 'parentContractId'")
+                self.parent_payment_id = UUID(parent_contract_id)
+                transaction_status = TransactionStatus.COMPLETED
+            case "payment.failed":
                 transaction_status = TransactionStatus.CANCELED
+            case "subscription.recurring.payment.failed" | "subscription.cancelled":
+                # Nothing to undo: access simply runs out at the paid date.
+                logger.info(f"Lava.top '{event_type}' for contract '{contract_id}' ignored")
+                return None
             case _:
                 raise ValueError(f"Unsupported Lava.top event type: '{event_type}'")
 

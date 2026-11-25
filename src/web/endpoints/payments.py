@@ -40,9 +40,12 @@ async def _enqueue_payment_task(
     gateway_type: str,
     config: AppConfig,
     event_publisher: EventPublisher,
+    parent_payment_id: Optional[UUID] = None,
 ) -> Optional[Response]:
     try:
-        await handle_payment_transaction_task.kiq(payment_id, payment_status, gateway_enum)  # type: ignore[call-overload]
+        await handle_payment_transaction_task.kiq(  # type: ignore[call-overload]
+            payment_id, payment_status, gateway_enum, parent_payment_id
+        )
         return None
     except Exception as e:
         logger.exception(f"Failed to enqueue payment task for '{gateway_type}'")
@@ -107,7 +110,13 @@ async def _process_payment_webhook(
         if gateway_enum == PaymentGatewayType.PLATEGA:
             await _sync_platega_payment_method(gateway, payment_id, transaction_dao, uow)
         enqueue_error = await _enqueue_payment_task(
-            payment_id, payment_status, gateway_enum, gateway_type, config, event_publisher
+            payment_id,
+            payment_status,
+            gateway_enum,
+            gateway_type,
+            config,
+            event_publisher,
+            parent_payment_id=getattr(gateway, "parent_payment_id", None),
         )
         if enqueue_error is not None:
             return enqueue_error

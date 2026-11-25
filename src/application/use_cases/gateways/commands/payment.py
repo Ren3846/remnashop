@@ -298,6 +298,8 @@ class ProcessPaymentDto:
     payment_id: UUID
     new_transaction_status: TransactionStatus
     gateway_type: PaymentGatewayType
+    # First contract of the subscription when this payment is a recurring charge.
+    parent_payment_id: Optional[UUID] = None
 
 
 class ProcessPayment(Interactor[ProcessPaymentDto, None]):
@@ -329,9 +331,12 @@ class ProcessPayment(Interactor[ProcessPaymentDto, None]):
         self.assign_referral_rewards = assign_referral_rewards
         self.purchase_subscription = purchase_subscription
 
-    async def _execute(self, actor: UserDto, data: ProcessPaymentDto) -> None:
+    async def _execute(self, actor: UserDto, data: ProcessPaymentDto) -> None:  # noqa: C901
         payment_id = data.payment_id
         new_status = data.new_transaction_status
+
+        if data.parent_payment_id is not None:
+            await self._open_recurring_transaction(payment_id, data.parent_payment_id)
 
         async with self.uow:
             transaction = await self.transaction_dao.get_by_payment_id(payment_id)
@@ -438,6 +443,42 @@ class ProcessPayment(Interactor[ProcessPaymentDto, None]):
         # UoW closed cleanly; purchase_subscription will open its own UoW
         await self._handle_success(user, transaction)
         logger.info(f"Payment succeeded '{payment_id}' for user {user.log}")
+
+    async def _open_recurring_transaction(self, payment_id: UUID, parent_payment_id: UUID) -> None:
+        # The gateway charged again on its own, so there is no pending transaction to
+        # complete. Open one from the first payment of that subscription; the usual
+        # completion path then extends the access and notifies the user.
+        async with self.uow:
+            if await self.transaction_dao.exists(payment_id):
+                return
+
+            parent = await self.transaction_dao.get_by_payment_id(parent_payment_id)
+            if not parent:
+                logger.critical(
+                    f"Recurring payment '{payment_id}' was charged, but its first payment "
+                    f"'{parent_payment_id}' is unknown: nothing was extended"
+                )
+                return
+
+            subscription = await self.subscription_dao.get_current(parent.user_id)
+            await self.transaction_dao.create(
+                TransactionDto(
+                    payment_id=payment_id,
+                    user_id=parent.user_id,
+                    status=TransactionStatus.PENDING,
+                    purchase_type=PurchaseType.RENEW if subscription else PurchaseType.NEW,
+                    gateway_type=parent.gateway_type,
+                    gateway_display_name=parent.gateway_display_name,
+                    pricing=parent.pricing,
+                    currency=parent.currency,
+                    plan_snapshot=parent.plan_snapshot,
+                )
+            )
+            await self.uow.commit()
+            logger.info(
+                f"Recurring payment '{payment_id}' opened from '{parent_payment_id}' "
+                f"for user '{parent.user_id}'"
+            )
 
     async def _handle_success(self, user: UserDto, transaction: TransactionDto) -> None:
         if transaction.is_test:
