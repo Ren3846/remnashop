@@ -17,7 +17,7 @@ class CreateAdLinkDto:
 
 
 class CreateAdLink(Interactor[CreateAdLinkDto, AdLinkDto]):
-    required_permission = Permission.VIEW_ADVERTISING
+    required_permission = Permission.MANAGE_ADVERTISING
 
     def __init__(
         self,
@@ -66,7 +66,7 @@ class UpdateAdLinkDto:
 
 
 class UpdateAdLink(Interactor[UpdateAdLinkDto, Optional[AdLinkDto]]):
-    required_permission = Permission.VIEW_ADVERTISING
+    required_permission = Permission.MANAGE_ADVERTISING
 
     def __init__(self, uow: UnitOfWork, ad_link_dao: AdLinkDao) -> None:
         self.uow = uow
@@ -84,7 +84,7 @@ class UpdateAdLink(Interactor[UpdateAdLinkDto, Optional[AdLinkDto]]):
 
 
 class DeleteAdLink(Interactor[int, bool]):
-    required_permission = Permission.VIEW_ADVERTISING
+    required_permission = Permission.MANAGE_ADVERTISING
 
     def __init__(self, uow: UnitOfWork, ad_link_dao: AdLinkDao) -> None:
         self.uow = uow

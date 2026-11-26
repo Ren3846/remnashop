@@ -5,9 +5,11 @@ from aiogram_dialog.widgets.style import Style
 from aiogram_dialog.widgets.text import Format
 from magic_filter import F
 
+from src.application.common.policy import Permission
 from src.core.enums import BannerName
 from src.telegram.keyboards import main_menu_button
 from src.telegram.states import DashboardRemnashop, RemnashopAdvertising
+from src.telegram.utils import require_permission
 from src.telegram.widgets import Banner, I18nFormat, IgnoreUpdate
 from src.telegram.widgets.kbd import Button, CopyText, ListGroup, Row, Start, SwitchTo
 
@@ -23,6 +25,9 @@ from .handlers import (
     on_name_input,
 )
 
+# Without it the section is read-only: the list, a link's address and its statistics.
+can_manage = require_permission(Permission.MANAGE_ADVERTISING)
+
 links = Window(
     Banner(BannerName.DASHBOARD),
     I18nFormat("msg-ad-links-main"),
@@ -31,6 +36,7 @@ links = Window(
             text=I18nFormat("btn-ad-links.create"),
             id="create",
             on_click=on_link_create,
+            when=can_manage,
         ),
     ),
     ListGroup(
@@ -79,6 +85,7 @@ configurator = Window(
             text=I18nFormat("btn-ad-links.active-toggle", is_active=F["is_active"]),
             id="active_toggle",
             on_click=on_active_toggle,
+            when=can_manage,
         ),
     ),
     Row(
@@ -86,11 +93,13 @@ configurator = Window(
             text=I18nFormat("btn-ad-links.name"),
             id="name",
             state=RemnashopAdvertising.NAME,
+            when=can_manage,
         ),
         SwitchTo(
             text=I18nFormat("btn-ad-links.code"),
             id="code",
             state=RemnashopAdvertising.CODE,
+            when=can_manage,
         ),
     ),
     Row(
@@ -106,6 +115,7 @@ configurator = Window(
             id="create_confirm",
             on_click=on_link_confirm,
             style=Style(ButtonStyle.SUCCESS),
+            when=can_manage,
         ),
         when=~F["is_edit"],
     ),
@@ -115,12 +125,14 @@ configurator = Window(
             id="save",
             on_click=on_link_confirm,
             style=Style(ButtonStyle.SUCCESS),
+            when=can_manage,
         ),
         Button(
             text=I18nFormat("btn-ad-links.delete"),
             id="delete_link",
             on_click=on_link_delete,
             style=Style(ButtonStyle.DANGER),
+            when=can_manage,
         ),
         when=F["is_edit"],
     ),

@@ -39,6 +39,7 @@ class Permission(UpperStrEnum):
     VIEW_GATEWAYS = auto()
     VIEW_REFERRAL = auto()
     VIEW_ADVERTISING = auto()
+    MANAGE_ADVERTISING = auto()
     VIEW_PLANS = auto()
     VIEW_NOTIFICATIONS = auto()
     VIEW_LOGS = auto()
@@ -86,6 +87,10 @@ ROLE_PERMISSIONS: Final[dict[Role, set[Permission]]] = {
         Permission.VIEW_PROMOCODE,
         Permission.MANAGE_PROMOCODE,
         Permission.VIEW_ACCESS,
+        # Ad links are read-only for admins: VIEW_REMNASHOP only opens the menu that
+        # holds them, creating and editing needs MANAGE_ADVERTISING.
+        Permission.VIEW_REMNASHOP,
+        Permission.VIEW_ADVERTISING,
         # Actions
         Permission.SETTINGS_ACCESS,
         Permission.USER_SEARCH,
