@@ -1,5 +1,9 @@
+from contextlib import suppress
+from typing import Optional
+
 from adaptix import Retort
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, Message
 from aiogram_dialog import DialogManager, ShowMode, StartMode
@@ -35,7 +39,7 @@ from src.application.use_cases.gateways.commands.payment import (
 )
 from src.application.use_cases.user.commands.profile_edit import ResetOwnReferralCode
 from src.application.use_cases.user.queries.plans import GetAvailableTrial
-from src.core.constants import CONTAINER_KEY, USER_KEY
+from src.core.constants import CONTAINER_KEY, USER_KEY, WELCOME_TRIAL
 from src.core.enums import MediaType
 from src.core.exceptions import CooldownError
 from src.core.utils.i18n_helpers import i18n_format_expire_time
@@ -94,6 +98,34 @@ async def on_start_dialog(user: TelegramUserDto, dialog_manager: DialogManager) 
     )
 
 
+async def _welcome_trial_text(
+    user: TelegramUserDto,
+    i18n: TranslatorRunner,
+    get_available_trial: GetAvailableTrial,
+    settings_dao: SettingsDao,
+) -> Optional[str]:
+    """Label of the trial button for the welcome message, None when no trial is on offer.
+
+    The same label as in the main menu, so a newcomer sees the trial at once instead of
+    having to find the menu first. The welcome itself must not depend on it.
+    """
+    try:
+        plan = await get_available_trial.system(user)
+        if not plan or not plan.durations:
+            return None
+        currency = (await settings_dao.get()).default_currency
+        price = plan.durations[0].get_price(currency)
+        if price == 0:
+            # A key: the notifier translates button labels itself.
+            return "btn-menu.trial"
+        return i18n.get(
+            "btn-menu.trial-paid", trial_price=f"{price.normalize():f} {currency.symbol}"
+        )
+    except Exception:
+        logger.exception(f"{user.log} Failed to prepare the trial button for the welcome")
+        return None
+
+
 @inject
 @router.message(CommandStart(ignore_case=True))
 async def on_start_command(
@@ -101,20 +133,38 @@ async def on_start_command(
     user: TelegramUserDto,
     dialog_manager: DialogManager,
     notifier: FromDishka[Notifier],
+    i18n: FromDishka[TranslatorRunner],
+    get_available_trial: FromDishka[GetAvailableTrial],
+    settings_dao: FromDishka[SettingsDao],
     is_new_user: bool = False,
 ) -> None:
     if is_new_user:
+        trial_text = await _welcome_trial_text(user, i18n, get_available_trial, settings_dao)
         await notifier.notify_user(
             user,
             MessagePayloadDto(
                 i18n_key="ntf-user-welcome",
-                reply_markup=get_welcome_keyboard(),
+                reply_markup=get_welcome_keyboard(trial_text),
                 disable_default_markup=True,
                 delete_after=None,
             ),
         )
         return
     await on_start_dialog(user, dialog_manager)
+
+
+@router.callback_query(F.data == WELCOME_TRIAL)
+async def on_welcome_trial(
+    callback: CallbackQuery,
+    user: TelegramUserDto,
+    dialog_manager: DialogManager,
+) -> None:
+    # Opens the main menu, where the trial button does the rest (email, activation, payment).
+    if isinstance(callback.message, Message):
+        with suppress(TelegramBadRequest):
+            await callback.message.delete()
+    await on_start_dialog(user, dialog_manager)
+    await callback.answer()
 
 
 @router.callback_query(F.data == CALLBACK_RULES_ACCEPT)

@@ -8,7 +8,15 @@ from aiogram_dialog.widgets.style import Style
 from aiogram_dialog.widgets.text import Format
 from magic_filter import F
 
-from src.core.constants import DOCS, GOTO_PREFIX, PAYMENT_PREFIX, REPOSITORY, T_ME, WELCOME_CTA
+from src.core.constants import (
+    DOCS,
+    GOTO_PREFIX,
+    PAYMENT_PREFIX,
+    REPOSITORY,
+    T_ME,
+    WELCOME_CTA,
+    WELCOME_TRIAL,
+)
 from src.core.enums import ButtonType, PurchaseType
 from src.telegram.states import DashboardUser, MainMenu, Notification, Subscription
 from src.telegram.widgets import I18nFormat
@@ -181,8 +189,17 @@ def get_renew_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_welcome_keyboard() -> InlineKeyboardMarkup:
+def get_welcome_keyboard(trial_text: Optional[str] = None) -> InlineKeyboardMarkup:
+    """trial_text is the ready label of the trial button; without it only "buy" is shown."""
     builder = InlineKeyboardBuilder()
+    if trial_text:
+        builder.row(
+            InlineKeyboardButton(
+                text=trial_text,
+                callback_data=WELCOME_TRIAL,
+                style=ButtonStyle.SUCCESS,
+            ),
+        )
     builder.row(
         InlineKeyboardButton(
             text="btn-goto.subscription",
