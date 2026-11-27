@@ -1,4 +1,7 @@
+from contextlib import suppress
+
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandObject, CommandStart
 from aiogram.types import CallbackQuery, Message
 from aiogram_dialog import DialogManager, ShowMode, StartMode
@@ -7,7 +10,7 @@ from dishka.integrations.aiogram_dialog import inject
 from loguru import logger
 
 from src.application.common import Notifier
-from src.application.common.dao import SubscriptionDao
+from src.application.common.dao import SubscriptionDao, UserDao
 from src.application.dto import TelegramUserDto
 from src.application.use_cases.promocode.queries.validate import (
     ValidatePromocode,
@@ -46,9 +49,13 @@ async def on_welcome_cta(
     await callback.answer()
 
 
+@inject
 @router.callback_query(F.data.startswith(GOTO_PREFIX))
 async def on_goto(
-    callback: CallbackQuery, dialog_manager: DialogManager, user: TelegramUserDto
+    callback: CallbackQuery,
+    dialog_manager: DialogManager,
+    user: TelegramUserDto,
+    user_dao: FromDishka[UserDao],
 ) -> None:
     logger.info(f"{user.log} Try go to '{callback.data}'")
     data = callback.data.removeprefix(GOTO_PREFIX)  # type: ignore[union-attr]
@@ -82,6 +89,15 @@ async def on_goto(
         except ValueError:
             logger.warning(f"{user.log} Invalid target_user_id in callback: {parts[2]}")
             await callback.answer()
+            return
+
+        if not await user_dao.get_by_id(target_user_id):
+            # The user was deleted: drop the notification that still points at them.
+            logger.info(f"{user.log} Tried to open deleted user '{target_user_id}'")
+            await callback.answer("Пользователь удалён", show_alert=True)
+            if isinstance(callback.message, Message):
+                with suppress(TelegramBadRequest):
+                    await callback.message.delete()
             return
 
         await dialog_manager.bg(
