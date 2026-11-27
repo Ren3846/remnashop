@@ -5,7 +5,7 @@ from dishka.integrations.taskiq import FromDishka, inject
 from loguru import logger
 
 from src.application.common.dao import UserDao
-from src.application.services import LandingPaymentService
+from src.application.services import LandingPaymentService, PaymentReminderService
 from src.application.use_cases.gateways.commands.payment import ProcessPayment, ProcessPaymentDto
 from src.application.use_cases.misc.commands.maintenance import CancelOldTransactions
 from src.application.use_cases.user import LinkUserEmail, LinkUserEmailDto
@@ -84,3 +84,23 @@ async def cancel_old_transactions_task(
     cancel_old_transactions: FromDishka[CancelOldTransactions],
 ) -> None:
     await cancel_old_transactions.system()
+
+
+@broker.task()
+@inject(patch_module=True)
+async def send_payment_link_email_task(
+    payment_id: str,
+    *,
+    payment_reminder: FromDishka[PaymentReminderService],
+) -> None:
+    await payment_reminder.send_link_email(payment_id)
+
+
+@broker.task(schedule=[{"cron": "*/2 * * * *"}])
+@inject(patch_module=True)
+async def remind_unpaid_payments_task(
+    payment_reminder: FromDishka[PaymentReminderService],
+) -> None:
+    sent = await payment_reminder.remind_due()
+    if sent:
+        logger.info(f"Reminded {sent} user(s) about an unpaid invoice")

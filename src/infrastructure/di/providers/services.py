@@ -18,6 +18,7 @@ from src.application.common import (
 )
 from src.application.services import (
     LandingPaymentService,
+    PaymentReminderService,
     PricingService,
     RemnaWebhookService,
 )
@@ -49,6 +50,7 @@ class ServicesProvider(Provider):
     bot = provide(source=BotServiceImpl, provides=BotService)
     health = provide(source=HealthService)
     landing_payment = provide(source=LandingPaymentService, scope=Scope.REQUEST)
+    payment_reminder = provide(source=PaymentReminderService, scope=Scope.REQUEST)
     cryptographer = provide(source=CryptographerImpl, provides=Cryptographer)
     password_hasher = provide(source=PasswordHasherImpl, provides=PasswordHasher)
     email_sender = provide(source=CompositeEmailSender, provides=EmailSender)

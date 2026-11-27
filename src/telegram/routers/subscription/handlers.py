@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Any, Optional, TypedDict, cast
 
 from adaptix import Retort
@@ -11,7 +12,7 @@ from loguru import logger
 from src.application.common import Notifier
 from src.application.common.dao import PaymentGatewayDao, PlanDao, SettingsDao, SubscriptionDao
 from src.application.dto import PlanDto, PlanSnapshotDto, SubscriptionDto, TelegramUserDto
-from src.application.services import PricingService
+from src.application.services import PaymentReminderService, PricingService
 from src.application.use_cases.gateways.commands.payment import (
     CreatePayment,
     CreatePaymentDto,
@@ -27,6 +28,7 @@ from src.telegram.routers.common.email_handlers import (
     on_link_email_input,
     redirect_if_email_required,
 )
+from src.infrastructure.taskiq.tasks.payments import send_payment_link_email_task
 from src.telegram.states import MainMenu, Subscription
 
 
@@ -79,6 +81,27 @@ def _save_payment_data(dialog_manager: DialogManager, payment_data: CachedPaymen
     dialog_manager.dialog_data["final_pricing"] = payment_data["final_pricing"]
 
 
+async def _queue_payment_followup(
+    dialog_manager: DialogManager,
+    user: TelegramUserDto,
+    payment_id: str,
+    url: str,
+    amount: Decimal,
+    plan_name: str,
+) -> None:
+    """Mails the payment link and queues a nudge for an unpaid invoice.
+
+    A convenience on top of the purchase: it must never get in the way of paying.
+    """
+    try:
+        container: AsyncContainer = dialog_manager.middleware_data[CONTAINER_KEY]
+        payment_reminder = await container.get(PaymentReminderService)
+        await payment_reminder.remember(payment_id, user.id, url, amount, plan_name)
+        await send_payment_link_email_task.kiq(payment_id)  # type: ignore[call-overload]
+    except Exception as e:
+        logger.error(f"{user.log} Follow-up for payment '{payment_id}' was not queued: {e}")
+
+
 async def _create_payment_and_get_data(
     dialog_manager: DialogManager,
     plan: PlanDto,
@@ -115,6 +138,11 @@ async def _create_payment_and_get_data(
                 email=user.email,
             ),
         )
+
+        if result.url:
+            await _queue_payment_followup(
+                dialog_manager, user, str(result.id), result.url, pricing.final_amount, plan.name
+            )
 
         return CachedPaymentData(
             payment_id=str(result.id),
