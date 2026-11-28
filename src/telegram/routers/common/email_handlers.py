@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from aiogram.types import Message
-from aiogram_dialog import DialogManager
+from aiogram_dialog import DialogManager, StartMode
 from aiogram_dialog.widgets.input import MessageInput
 from dishka import FromDishka
 from dishka.integrations.aiogram_dialog import inject
@@ -183,13 +183,28 @@ async def on_confirm_email_input(
 
     email_after = dialog_manager.dialog_data.pop(EMAIL_AFTER_KEY, None)
     await notifier.notify_user(user=user, i18n_key="ntf-user.email-linked")
+    await _continue_after_email(dialog_manager, email_after)
 
-    if email_after == "menu":
-        await dialog_manager.switch_to(MainMenu.MAIN)
+
+async def _continue_after_email(dialog_manager: DialogManager, email_after: Any) -> None:
+    in_main_menu = dialog_manager.current_context().state.group == MainMenu
+    if email_after == "trial" and in_main_menu:
+        # Imported here: the menu handlers import this module.
+        from src.telegram.routers.menu.handlers import (  # noqa: PLC0415
+            continue_trial_after_email,
+        )
+
+        await continue_trial_after_email(dialog_manager)
     elif email_after in {"subscription", "trial", "landing"}:
-        await dialog_manager.switch_to(Subscription.MAIN)
-    else:
+        # switch_to only moves within one dialog; the subscription dialog is a different one.
+        if in_main_menu:
+            await dialog_manager.start(Subscription.MAIN)
+        else:
+            await dialog_manager.switch_to(Subscription.MAIN)
+    elif in_main_menu:
         await dialog_manager.switch_to(MainMenu.MAIN)
+    else:
+        await dialog_manager.start(MainMenu.MAIN, mode=StartMode.RESET_STACK)
 
 
 def should_prompt_email_on_start(user: TelegramUserDto) -> bool:

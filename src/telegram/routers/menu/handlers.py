@@ -206,6 +206,44 @@ async def on_get_trial(
     ):
         return
 
+    await grant_trial(
+        dialog_manager,
+        user,
+        notifier=notifier,
+        redirect=redirect,
+        retort=retort,
+        get_available_trial=get_available_trial,
+        activate_trial_subscription=activate_trial_subscription,
+        settings_dao=settings_dao,
+    )
+
+
+async def continue_trial_after_email(dialog_manager: DialogManager) -> None:
+    """The trial button sent the user to confirm an email first; finish what they asked for."""
+    container = dialog_manager.middleware_data[CONTAINER_KEY]
+    await grant_trial(
+        dialog_manager,
+        dialog_manager.middleware_data[USER_KEY],
+        notifier=await container.get(Notifier),
+        redirect=await container.get(Redirect),
+        retort=await container.get(Retort),
+        get_available_trial=await container.get(GetAvailableTrial),
+        activate_trial_subscription=await container.get(ActivateTrialSubscription),
+        settings_dao=await container.get(SettingsDao),
+    )
+
+
+async def grant_trial(
+    dialog_manager: DialogManager,
+    user: TelegramUserDto,
+    *,
+    notifier: Notifier,
+    redirect: Redirect,
+    retort: Retort,
+    get_available_trial: GetAvailableTrial,
+    activate_trial_subscription: ActivateTrialSubscription,
+    settings_dao: SettingsDao,
+) -> None:
     plan = await get_available_trial.system(user)
 
     if not plan:
